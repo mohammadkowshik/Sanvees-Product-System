@@ -1194,6 +1194,10 @@ const searchByImage = async () => {
 
     console.log("AI VISUAL SEARCH RESULT:", result);
 
+    console.log("STATUS:", response.status);
+console.log("OK:", response.ok);
+console.log("RESULT:", JSON.stringify(result, null, 2));
+
     if (!response.ok || !result.success) {
       throw new Error(
         result.error || "AI visual search failed."
