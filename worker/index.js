@@ -55,9 +55,12 @@
 
       for (const [name, words] of groups) {
         for (const word of words) {
-          const w = normalizeText(word);
+          const normalizedWord = normalizeText(word);
 
-          if (text === w || text.includes(w)) {
+          if (
+            text === normalizedWord ||
+            text.includes(normalizedWord)
+          ) {
             return name;
           }
         }
@@ -66,11 +69,16 @@
       return text;
     }
 
+    // =========================================================
+    // TEXT SIMILARITY
+    // =========================================================
+
     function similarity(a, b) {
       const A = normalizeText(a);
       const B = normalizeText(b);
 
       if (!A || !B) return 0;
+
       if (A === B) return 1;
 
       const wordsA = new Set(
@@ -81,33 +89,38 @@
         B.split(" ").filter((x) => x.length >= 3)
       );
 
-      if (!wordsA.size || !wordsB.size) return 0;
+      if (!wordsA.size || !wordsB.size) {
+        return 0;
+      }
 
       let common = 0;
 
       for (const word of wordsA) {
-        if (wordsB.has(word)) common++;
+        if (wordsB.has(word)) {
+          common++;
+        }
       }
 
       return common / Math.max(wordsA.size, wordsB.size);
     }
+
+    // =========================================================
+    // COLOR SIMILARITY
+    // =========================================================
 
     function colorSimilarity(a, b) {
       const A = normalizeColor(a);
       const B = normalizeColor(b);
 
       if (!A || !B) return 0;
+
       if (A === B) return 1;
 
       return 0;
     }
 
     // =========================================================
-    // EXTRACT FIELD FROM AI MARKDOWN
-    // =========================================================
-
-    // =========================================================
-    // EXTRACT FIELD FROM AI MARKDOWN OR JSON
+    // EXTRACT FIELD
     // =========================================================
 
     function extractField(text, label) {
@@ -115,34 +128,23 @@
 
       if (!source || !label) return "";
 
-      const key = String(label)
+      const escaped = String(label)
         .trim()
         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-      // JSON field: "garment_type": "Salwar Kameez"
-      const jsonRegex = new RegExp(
-        `["']${key}["']\\s*:\\s*["']([^"']*)["']`,
-        "i"
-      );
-
-      const jsonMatch = source.match(jsonRegex);
-
-      if (jsonMatch) {
-        return cleanText(jsonMatch[1]);
-      }
-
-      // Markdown field: **Garment Type:** Salwar Kameez
-      const markdownRegex = new RegExp(
-        `(?:^|\\n)\\s*(?:[-*•]\\s*)?\\*{0,2}${key}\\*{0,2}\\s*:\\s*(.+?)(?=\\n|$)`,
+      const regex = new RegExp(
+        "(?:^|\\n)\\s*(?:[-*•]\\s*)?\\*{0,2}" +
+          escaped +
+          "\\*{0,2}\\s*:\\s*(.+?)(?=\\n|$)",
         "im"
       );
 
-      const markdownMatch = source.match(markdownRegex);
+      const match = source.match(regex);
 
-      if (!markdownMatch) return "";
+      if (!match) return "";
 
       return cleanText(
-        markdownMatch[1]
+        match[1]
           .replace(/\*\*/g, "")
           .replace(/^[-*•]\s*/, "")
       );
@@ -154,13 +156,11 @@
       if (!value) return [];
 
       return value
-        .replace(/^\[/, "")
-        .replace(/\]$/, "")
-        .replace(/["']/g, "")
         .split(/,\s*|\s+and\s+/i)
         .map((x) => cleanText(x))
         .filter(Boolean);
     }
+
     // =========================================================
     // NORMALIZE FINGERPRINT
     // =========================================================
@@ -173,110 +173,160 @@
 
       const result = {
         garment_type: cleanText(parsed?.garment_type),
-        dominant_color: cleanText(parsed?.dominant_color),
 
-        secondary_colors: Array.isArray(parsed?.secondary_colors)
+        dominant_color: cleanText(
+          parsed?.dominant_color
+        ),
+
+        secondary_colors: Array.isArray(
+          parsed?.secondary_colors
+        )
           ? parsed.secondary_colors
               .map(cleanText)
               .filter(Boolean)
           : [],
 
         pattern: cleanText(parsed?.pattern),
-        embroidery: cleanText(parsed?.embroidery),
-        neckline: cleanText(parsed?.neckline),
-        sleeves: cleanText(parsed?.sleeves),
-        cuffs: cleanText(parsed?.cuffs),
-        fit: cleanText(parsed?.fit),
-        length: cleanText(parsed?.length),
-        hem: cleanText(parsed?.hem),
-        border: cleanText(parsed?.border),
-        dupatta_or_orna: cleanText(parsed?.dupatta_or_orna),
-        fabric_appearance: cleanText(parsed?.fabric_appearance),
+
+        embroidery: cleanText(
+          parsed?.embroidery
+        ),
+
+        neckline: cleanText(
+          parsed?.neckline
+        ),
+
+        sleeves: cleanText(
+          parsed?.sleeves
+        ),
+
+        cuffs: cleanText(
+          parsed?.cuffs
+        ),
+
+        fit: cleanText(
+          parsed?.fit
+        ),
+
+        length: cleanText(
+          parsed?.length
+        ),
+
+        hem: cleanText(
+          parsed?.hem
+        ),
+
+        border: cleanText(
+          parsed?.border
+        ),
+
+        dupatta_or_orna: cleanText(
+          parsed?.dupatta_or_orna
+        ),
+
+        fabric_appearance: cleanText(
+          parsed?.fabric_appearance
+        ),
+
         distinctive_details: cleanText(
           parsed?.distinctive_details
         ),
+
         visual_fingerprint: cleanText(
           parsed?.visual_fingerprint
         ),
       };
 
-      // =====================================================
+      // =========================================================
       // MARKDOWN FALLBACK
-      // =====================================================
+      // =========================================================
 
-      if (!result.garment_type)
+      if (!result.garment_type) {
         result.garment_type = extractField(
           source,
           "Garment Type"
         );
+      }
 
-      if (!result.dominant_color)
+      if (!result.dominant_color) {
         result.dominant_color = extractField(
           source,
           "Dominant Color"
         );
+      }
 
-      if (!result.secondary_colors.length)
-        result.secondary_colors = extractListField(
-          source,
-          "Secondary Colors"
-        );
+      if (!result.secondary_colors.length) {
+        result.secondary_colors =
+          extractListField(
+            source,
+            "Secondary Colors"
+          );
+      }
 
-      if (!result.pattern)
+      if (!result.pattern) {
         result.pattern = extractField(
           source,
           "Pattern"
         );
+      }
 
-      if (!result.embroidery)
+      if (!result.embroidery) {
         result.embroidery = extractField(
           source,
           "Embroidery"
         );
+      }
 
-      if (!result.neckline)
+      if (!result.neckline) {
         result.neckline = extractField(
           source,
           "Neckline"
         );
+      }
 
-      if (!result.sleeves)
+      if (!result.sleeves) {
         result.sleeves = extractField(
           source,
           "Sleeves"
         );
+      }
 
-      if (!result.cuffs)
+      if (!result.cuffs) {
         result.cuffs = extractField(
           source,
           "Cuffs"
         );
+      }
 
-      if (!result.fit)
+      if (!result.fit) {
         result.fit = extractField(
           source,
           "Fit"
         );
+      }
 
-      if (!result.length)
+      if (!result.length) {
         result.length = extractField(
           source,
           "Length"
         );
+      }
 
-      if (!result.hem)
+      if (!result.hem) {
         result.hem = extractField(
           source,
           "Hem"
         );
+      }
 
-      if (!result.border)
+      if (!result.border) {
         result.border = extractField(
           source,
           "Border"
         );
+      }
 
-      if (!result.dupatta_or_orna)
+      if (!result.dupatta_or_orna) {
         result.dupatta_or_orna =
           extractField(
             source,
@@ -290,27 +340,31 @@
             source,
             "Dupatta or Orna"
           );
+      }
 
-      if (!result.fabric_appearance)
+      if (!result.fabric_appearance) {
         result.fabric_appearance =
           extractField(
             source,
             "Fabric Appearance"
           );
+      }
 
-      if (!result.distinctive_details)
+      if (!result.distinctive_details) {
         result.distinctive_details =
           extractField(
             source,
             "Distinctive Details"
           );
+      }
 
-      if (!result.visual_fingerprint)
+      if (!result.visual_fingerprint) {
         result.visual_fingerprint =
           extractField(
             source,
             "Visual Fingerprint"
           ) || source;
+      }
 
       return result;
     }
@@ -323,33 +377,49 @@
       const result = await env.AI.run(
         "@cf/meta/llama-3.2-11b-vision-instruct",
         {
-          image: [...new Uint8Array(imageBytes)],
+          image: [
+            ...new Uint8Array(imageBytes),
+          ],
 
           prompt: `
 You are a STRICT fashion product identification AI.
 
-Analyze ONLY the garment.
+Your ONLY task is to analyze the CLOTHING PRODUCT visible in the image.
 
-Ignore:
-- face
-- body
+IMPORTANT:
+
+IGNORE completely:
+
+- person's face
+- person's body
 - skin
 - hair
+- hands
 - room
 - wall
 - furniture
 - plants
+- floor
 - background
+- photography style
+- camera
 - lighting
+- shadows
 
-The goal is to identify the EXACT clothing product.
+FOCUS ONLY ON THE GARMENT.
 
-Pay special attention to:
+The image may contain a dress, salwar kameez, three piece, saree, blouse, or other clothing.
+
+Identify the actual clothing product as precisely as possible.
+
+Pay extremely close attention to:
+
 - garment type
-- dominant color
-- secondary colors
+- dominant garment color
+- secondary garment colors
 - exact pattern
 - embroidery
+- embroidery placement
 - neckline
 - sleeves
 - cuffs
@@ -359,57 +429,57 @@ Pay special attention to:
 - border
 - dupatta/orna
 - fabric appearance
-- distinctive details
+- unique decorative elements
+- unique motifs
+- unique arrangement of embroidery
+- unique border design
+- unique sleeve design
+- unique neckline design
 
 COLOR RULE:
-Use the actual garment color.
-Never use background color.
-Never use skin color.
-Never use lighting color.
-VERY IMPORTANT VISUAL FINGERPRINT RULES:
 
-The "visual_fingerprint" field MUST be a natural-language description
-of the clothing item.
+Use ONLY the color of the garment.
 
-It MUST NOT be:
-- a code
-- an ID
-- a hash
-- a hexadecimal value
-- a random string
-- a product ID
-- a SKU
-- a number-only value
+Never use:
 
-It MUST describe the actual garment using visible characteristics.
+- background color
+- wall color
+- skin color
+- lighting color
+- furniture color
 
-Include:
-- garment type
-- dominant color
-- secondary colors
-- pattern
-- embroidery
-- neckline
-- sleeves
-- dupatta/orna
-- distinctive visual details
+VERY IMPORTANT:
 
-The visual_fingerprint MUST be a descriptive sentence.
+The visual fingerprint must describe the garment itself.
 
-GOOD example:
-"Orange salwar kameez with floral pattern, gold embroidery,
-long sleeves, embroidered cuffs, round neckline, matching dupatta
-and tassel details."
+Do NOT create:
 
-BAD example:
-"A6F5E1"
-"123456"
-"product_001"
-"SKU-ORANGE-12"
+- IDs
+- SKU
+- hashes
+- codes
+- random strings
+- numbers
+
+The visual fingerprint must be a detailed natural-language description.
+
+Include distinctive visual characteristics that can help determine whether another photograph shows the SAME clothing product.
+
+IMPORTANT EXACT MATCH RULE:
+
+Two products should be considered the same only when their visible garment characteristics strongly agree.
+
+Do NOT consider two products the same just because:
+
+- both are orange
+- both are sarees
+- both are three pieces
+- both have embroidery
+- both have similar patterns
+
+The complete visual design must agree.
 
 Return ONLY JSON.
-Do not return Markdown.
-Do not explain anything.
 
 Required JSON:
 
@@ -440,27 +510,72 @@ Required JSON:
               type: "object",
 
               properties: {
-                garment_type: { type: "string" },
-                dominant_color: { type: "string" },
+                garment_type: {
+                  type: "string",
+                },
+
+                dominant_color: {
+                  type: "string",
+                },
 
                 secondary_colors: {
                   type: "array",
-                  items: { type: "string" },
+                  items: {
+                    type: "string",
+                  },
                 },
 
-                pattern: { type: "string" },
-                embroidery: { type: "string" },
-                neckline: { type: "string" },
-                sleeves: { type: "string" },
-                cuffs: { type: "string" },
-                fit: { type: "string" },
-                length: { type: "string" },
-                hem: { type: "string" },
-                border: { type: "string" },
-                dupatta_or_orna: { type: "string" },
-                fabric_appearance: { type: "string" },
-                distinctive_details: { type: "string" },
-                visual_fingerprint: { type: "string" },
+                pattern: {
+                  type: "string",
+                },
+
+                embroidery: {
+                  type: "string",
+                },
+
+                neckline: {
+                  type: "string",
+                },
+
+                sleeves: {
+                  type: "string",
+                },
+
+                cuffs: {
+                  type: "string",
+                },
+
+                fit: {
+                  type: "string",
+                },
+
+                length: {
+                  type: "string",
+                },
+
+                hem: {
+                  type: "string",
+                },
+
+                border: {
+                  type: "string",
+                },
+
+                dupatta_or_orna: {
+                  type: "string",
+                },
+
+                fabric_appearance: {
+                  type: "string",
+                },
+
+                distinctive_details: {
+                  type: "string",
+                },
+
+                visual_fingerprint: {
+                  type: "string",
+                },
               },
 
               required: [
@@ -486,25 +601,31 @@ Required JSON:
         }
       );
 
+      console.log(
+        "FULL AI RESULT:",
+        JSON.stringify(result)
+      );
+
       let raw =
         result?.response ??
         result?.result?.response ??
         "";
 
-      if (
-        typeof raw !== "string"
-      ) {
+      if (typeof raw !== "string") {
         raw = JSON.stringify(raw || "");
       }
 
       raw = cleanText(raw);
 
       console.log(
-        "ðŸ”µ RAW VISION:",
+        "RAW VISION:",
         raw
       );
 
-      // Remove code fences
+      // =========================================================
+      // REMOVE CODE FENCES
+      // =========================================================
+
       raw = raw
         .replace(/^```json\s*/i, "")
         .replace(/^```\s*/i, "")
@@ -513,99 +634,36 @@ Required JSON:
 
       let parsed = null;
 
-      // =========================================================
-      // ROBUST VISION RESPONSE PARSER
-      // =========================================================
-
       try {
         parsed = JSON.parse(raw);
       } catch {
         const start = raw.indexOf("{");
+        const end = raw.lastIndexOf("}");
 
-        if (start !== -1) {
-          const jsonText = raw.slice(start);
-          const lastBrace = jsonText.lastIndexOf("}");
-
-          if (lastBrace !== -1) {
-            try {
-              parsed = JSON.parse(
-                jsonText.slice(0, lastBrace + 1)
-              );
-            } catch {
-              parsed = null;
-            }
+        if (start !== -1 && end > start) {
+          try {
+            parsed = JSON.parse(
+              raw.slice(start, end + 1)
+            );
+          } catch {
+            parsed = null;
           }
         }
       }
 
-      // =========================================================
-      // TEXT FALLBACK
-      // =========================================================
+      if (
+        !parsed ||
+        typeof parsed !== "object"
+      ) {
+        console.error(
+          "Invalid vision response:",
+          raw
+        );
 
-      if (!parsed || typeof parsed !== "object") {
-        const text = raw.toLowerCase();
-
-        const garmentType =
-          text.includes("salwar kameez")
-            ? "Salwar Kameez"
-            : text.includes("kameez")
-              ? "Kameez"
-              : "";
-
-        const dominantColor =
-          text.includes("orange")
-            ? "Orange"
-            : text.includes("red")
-              ? "Red"
-              : text.includes("blue")
-                ? "Blue"
-                : text.includes("green")
-                  ? "Green"
-                  : text.includes("pink")
-                    ? "Pink"
-                    : text.includes("yellow")
-                      ? "Yellow"
-                      : text.includes("black")
-                        ? "Black"
-                        : text.includes("white")
-                          ? "White"
-                          : "";
-
-        parsed = {
-          garment_type: garmentType,
-          dominant_color: dominantColor,
-          secondary_colors: [],
-          pattern: text.includes("floral") ? "Floral" : "",
-          embroidery: text.includes("embroidery") ? "Embroidery" : "",
-          neckline: text.includes("round neckline") ? "Round" : "",
-          sleeves: text.includes("long sleeves") ? "Long" : "",
-          cuffs: text.includes("embroidered cuffs") ? "Embroidered" : "",
-          fit: text.includes("loose") ? "Loose" : "",
-          length: text.includes("floor-length") ? "Floor-length" : "Long",
-          hem: text.includes("straight") ? "Straight" : "",
-          border: text.includes("border") || text.includes("trim")
-            ? "Embroidered Border"
-            : "",
-          dupatta_or_orna: text.includes("dupatta")
-            ? "Matching Dupatta"
-            : "",
-          fabric_appearance: text.includes("lightweight")
-            ? "Lightweight"
-            : "",
-          distinctive_details: text.includes("tassel")
-            ? "Tassel details"
-            : "",
-          visual_fingerprint: raw,
-        };
-      }
-      // =========================================================
-      // =========================================================
-      // FINAL FINGERPRINT NORMALIZATION
-      // =========================================================
-
-      if (!parsed || typeof parsed !== "object") {
-        console.error("Invalid vision response:", raw);
-        return normalizeFingerprint({}, raw);
+        return normalizeFingerprint(
+          {},
+          raw
+        );
       }
 
       return normalizeFingerprint(
@@ -615,6 +673,35 @@ Required JSON:
     }
 
     // =========================================================
+    // CREATE SEARCH TEXT
+    // =========================================================
+
+    function fingerprintText(f) {
+      return [
+        `Garment type: ${f.garment_type}`,
+        `Dominant color: ${f.dominant_color}`,
+
+        `Secondary colors: ${
+          Array.isArray(f.secondary_colors)
+            ? f.secondary_colors.join(", ")
+            : f.secondary_colors || ""
+        }`,
+
+        `Pattern: ${f.pattern}`,
+        `Embroidery: ${f.embroidery}`,
+        `Neckline: ${f.neckline}`,
+        `Sleeves: ${f.sleeves}`,
+        `Cuffs: ${f.cuffs}`,
+        `Fit: ${f.fit}`,
+        `Length: ${f.length}`,
+        `Hem: ${f.hem}`,
+        `Border: ${f.border}`,
+        `Dupatta or orna: ${f.dupatta_or_orna}`,
+        `Fabric appearance: ${f.fabric_appearance}`,
+        `Distinctive details: ${f.distinctive_details}`,
+        `Visual fingerprint: ${f.visual_fingerprint}`,
+      ].join(". ");
+    }
 
     // =========================================================
     // CANDIDATE FINGERPRINT
@@ -623,47 +710,118 @@ Required JSON:
     function candidateFingerprint(metadata) {
       const m = metadata || {};
 
+      let secondaryColors =
+        m.secondary_colors || "";
+
+      if (
+        Array.isArray(
+          secondaryColors
+        )
+      ) {
+        secondaryColors =
+          secondaryColors.join(", ");
+      }
+
       return {
-        garment_type: cleanText(m.garment_type),
-        dominant_color: cleanText(
-          m.dominant_color || m.color
-        ),
+        garment_type:
+          cleanText(
+            m.garment_type
+          ),
 
-        secondary_colors: cleanText(
-          m.secondary_colors
-        ),
+        dominant_color:
+          cleanText(
+            m.dominant_color ||
+              m.color
+          ),
 
-        pattern: cleanText(m.pattern),
-        embroidery: cleanText(m.embroidery),
-        neckline: cleanText(m.neckline),
-        sleeves: cleanText(m.sleeves),
-        cuffs: cleanText(m.cuffs),
-        fit: cleanText(m.fit),
-        length: cleanText(m.length),
-        hem: cleanText(m.hem),
-        border: cleanText(m.border),
-        dupatta_or_orna: cleanText(
-          m.dupatta_or_orna
-        ),
-        fabric_appearance: cleanText(
-          m.fabric_appearance
-        ),
-        distinctive_details: cleanText(
-          m.distinctive_details
-        ),
-        visual_fingerprint: cleanText(
-          m.visual_fingerprint
-        ),
+        secondary_colors:
+          cleanText(
+            secondaryColors
+          ),
+
+        pattern:
+          cleanText(
+            m.pattern
+          ),
+
+        embroidery:
+          cleanText(
+            m.embroidery
+          ),
+
+        neckline:
+          cleanText(
+            m.neckline
+          ),
+
+        sleeves:
+          cleanText(
+            m.sleeves
+          ),
+
+        cuffs:
+          cleanText(
+            m.cuffs
+          ),
+
+        fit:
+          cleanText(
+            m.fit
+          ),
+
+        length:
+          cleanText(
+            m.length
+          ),
+
+        hem:
+          cleanText(
+            m.hem
+          ),
+
+        border:
+          cleanText(
+            m.border
+          ),
+
+        dupatta_or_orna:
+          cleanText(
+            m.dupatta_or_orna
+          ),
+
+        fabric_appearance:
+          cleanText(
+            m.fabric_appearance
+          ),
+
+        distinctive_details:
+          cleanText(
+            m.distinctive_details
+          ),
+
+        visual_fingerprint:
+          cleanText(
+            m.visual_fingerprint
+          ),
       };
     }
 
     // =========================================================
-    // EXACT FINGERPRINT VERIFICATION
+    // STRICT EXACT VERIFICATION
     // =========================================================
 
-    function verifyExact(customer, metadata) {
+    function verifyExact(
+      customer,
+      metadata
+    ) {
       const candidate =
-        candidateFingerprint(metadata);
+        candidateFingerprint(
+          metadata
+        );
+
+      // -------------------------------------------------------
+      // COLOR MUST MATCH
+      // -------------------------------------------------------
 
       const customerColor =
         normalizeColor(
@@ -675,7 +833,6 @@ Required JSON:
           candidate.dominant_color
         );
 
-      // COLOR IS MANDATORY
       if (
         !customerColor ||
         !candidateColor ||
@@ -689,6 +846,32 @@ Required JSON:
         };
       }
 
+      // -------------------------------------------------------
+      // GARMENT TYPE MUST MATCH
+      // -------------------------------------------------------
+
+      const garmentSimilarity =
+        similarity(
+          customer.garment_type,
+          candidate.garment_type
+        );
+
+      if (
+        garmentSimilarity < 0.85
+      ) {
+        return {
+          exact: false,
+          score: 0,
+          reason:
+            "GARMENT_TYPE_MISMATCH",
+          candidate,
+        };
+      }
+
+      // -------------------------------------------------------
+      // FIELD CHECKS
+      // -------------------------------------------------------
+
       const checks = [
         ["garment_type", 0.18],
         ["pattern", 0.18],
@@ -699,23 +882,46 @@ Required JSON:
         ["fit", 0.04],
         ["length", 0.04],
         ["hem", 0.03],
-        ["border", 0.05],
+        ["border", 0.06],
         ["dupatta_or_orna", 0.05],
-        ["fabric_appearance", 0.03],
+        ["fabric_appearance", 0.02],
         ["distinctive_details", 0.04],
       ];
 
       let total = 0;
       let weight = 0;
 
-      for (const [field, w] of checks) {
-        const a = customer[field];
-        const b = candidate[field];
+      const fieldScores = {};
 
-        if (!a || !b) continue;
+      for (
+        const [field, weightValue]
+        of checks
+      ) {
+        const a =
+          customer[field];
 
-        total += similarity(a, b) * w;
-        weight += w;
+        const b =
+          candidate[field];
+
+        if (!a || !b) {
+          fieldScores[field] = 0;
+          continue;
+        }
+
+        const fieldScore =
+          similarity(a, b);
+
+        fieldScores[field] =
+          Number(
+            fieldScore.toFixed(4)
+          );
+
+        total +=
+          fieldScore *
+          weightValue;
+
+        weight +=
+          weightValue;
       }
 
       const score =
@@ -723,21 +929,72 @@ Required JSON:
           ? total / weight
           : 0;
 
-      // EXACT means strong agreement.
-      const exact =
-        score >= 0.78 &&
+      // -------------------------------------------------------
+      // DISTINCTIVE DETAILS CHECK
+      // -------------------------------------------------------
+
+      const distinctiveScore =
         similarity(
-          customer.garment_type,
-          candidate.garment_type
-        ) >= 0.70;
+          customer.distinctive_details,
+          candidate.distinctive_details
+        );
+
+      // -------------------------------------------------------
+      // PATTERN CHECK
+      // -------------------------------------------------------
+
+      const patternScore =
+        similarity(
+          customer.pattern,
+          candidate.pattern
+        );
+
+      // -------------------------------------------------------
+      // EMBROIDERY CHECK
+      // -------------------------------------------------------
+
+      const embroideryScore =
+        similarity(
+          customer.embroidery,
+          candidate.embroidery
+        );
+
+      // -------------------------------------------------------
+      // FINAL STRICT RULE
+      // -------------------------------------------------------
+
+      const exact =
+        score >= 0.86 &&
+        garmentSimilarity >= 0.85 &&
+        patternScore >= 0.70 &&
+        embroideryScore >= 0.70 &&
+        distinctiveScore >= 0.65;
 
       return {
         exact,
+
         score,
+
         reason: exact
-          ? "EXACT_FINGERPRINT"
-          : "FINGERPRINT_MISMATCH",
+          ? "EXACT_PRODUCT_MATCH"
+          : "STRICT_FINGERPRINT_MISMATCH",
+
         candidate,
+
+        field_scores:
+          fieldScores,
+
+        garment_similarity:
+          garmentSimilarity,
+
+        pattern_score:
+          patternScore,
+
+        embroidery_score:
+          embroideryScore,
+
+        distinctive_score:
+          distinctiveScore,
       };
     }
 
@@ -746,7 +1003,8 @@ Required JSON:
     // =========================================================
 
     if (
-      url.pathname === "/api/analyze-test" &&
+      url.pathname ===
+        "/api/analyze-test" &&
       request.method === "POST"
     ) {
       try {
@@ -756,11 +1014,14 @@ Required JSON:
         const image =
           formData.get("image");
 
-        if (!(image instanceof File)) {
+        if (
+          !(image instanceof File)
+        ) {
           return Response.json(
             {
               success: false,
-              error: "Please upload an image.",
+              error:
+                "Please upload an image.",
             },
             { status: 400 }
           );
@@ -770,7 +1031,9 @@ Required JSON:
           await image.arrayBuffer();
 
         const fingerprint =
-          await analyzeImage(bytes);
+          await analyzeImage(
+            bytes
+          );
 
         return Response.json({
           success: true,
@@ -796,11 +1059,12 @@ Required JSON:
     }
 
     // =========================================================
-    // INDEX PRODUCTS
+    // INDEX ALL PRODUCTS
     // =========================================================
 
     if (
-      url.pathname === "/api/index-products" &&
+      url.pathname ===
+        "/api/index-products" &&
       request.method === "POST"
     ) {
       try {
@@ -813,6 +1077,17 @@ Required JSON:
               success: false,
               error:
                 "Supabase secrets are not configured.",
+            },
+            { status: 500 }
+          );
+        }
+
+        if (!env.VECTORIZE) {
+          return Response.json(
+            {
+              success: false,
+              error:
+                "VECTORIZE binding is not configured.",
             },
             { status: 500 }
           );
@@ -838,6 +1113,7 @@ Required JSON:
               success: false,
               error:
                 `Supabase error ${response.status}`,
+
               details:
                 await response.text(),
             },
@@ -848,38 +1124,75 @@ Required JSON:
         const products =
           await response.json();
 
+        console.log(
+          "TOTAL PRODUCTS:",
+          products.length
+        );
+
         const vectors = [];
         const failed = [];
 
-        for (const product of products) {
+        for (
+          const product of products
+        ) {
           try {
-            if (!product.image_url) {
+            if (
+              !product.image_url
+            ) {
               failed.push({
                 id: product.id,
-                reason: "No image_url",
+                reason:
+                  "No image_url",
               });
+
               continue;
             }
+
+            console.log(
+              "INDEXING PRODUCT:",
+              product.id,
+              product.name
+            );
 
             const imageResponse =
               await fetch(
                 product.image_url
               );
 
-            if (!imageResponse.ok) {
+            if (
+              !imageResponse.ok
+            ) {
               failed.push({
                 id: product.id,
+
                 reason:
                   `Image download failed: ${imageResponse.status}`,
               });
+
               continue;
             }
 
             const bytes =
               await imageResponse.arrayBuffer();
 
+            // ---------------------------------------------------
+            // AI ANALYZE PRODUCT IMAGE
+            // ---------------------------------------------------
+
             const fingerprint =
-              await analyzeImage(bytes);
+              await analyzeImage(
+                bytes
+              );
+
+            console.log(
+              "PRODUCT FINGERPRINT:",
+              product.id,
+              fingerprint
+            );
+
+            // ---------------------------------------------------
+            // CREATE TEXT VECTOR
+            // ---------------------------------------------------
 
             const text =
               fingerprintText(
@@ -903,26 +1216,56 @@ Required JSON:
             ) {
               failed.push({
                 id: product.id,
+
                 reason:
                   "Invalid 768 vector",
               });
+
               continue;
             }
 
+            // ---------------------------------------------------
+            // VECTOR METADATA
+            // ---------------------------------------------------
+
             vectors.push({
-              id: String(product.id),
+              id: String(
+                product.id
+              ),
 
               values: vector,
 
               metadata: {
-                product_id: product.id,
-                name: product.name || "",
-                details: product.details || "",
-                color: product.color || "",
-                size: product.size || "",
-                price: product.price ?? null,
-                stock: product.stock ?? null,
-                image_url: product.image_url || "",
+                product_id:
+                  product.id,
+
+                name:
+                  product.name ||
+                  "",
+
+                details:
+                  product.details ||
+                  "",
+
+                color:
+                  product.color ||
+                  "",
+
+                size:
+                  product.size ||
+                  "",
+
+                price:
+                  product.price ??
+                  null,
+
+                stock:
+                  product.stock ??
+                  null,
+
+                image_url:
+                  product.image_url ||
+                  "",
 
                 garment_type:
                   fingerprint.garment_type,
@@ -976,14 +1319,16 @@ Required JSON:
               },
             });
 
-            console.log(
-              "INDEXED PRODUCT:",
-              product.id,
-              fingerprint
-            );
           } catch (error) {
+            console.error(
+              "PRODUCT INDEX ERROR:",
+              product.id,
+              error
+            );
+
             failed.push({
               id: product.id,
+
               reason:
                 error instanceof Error
                   ? error.message
@@ -996,13 +1341,20 @@ Required JSON:
           return Response.json(
             {
               success: false,
+
               error:
                 "No product vectors generated.",
-              failed_products: failed,
+
+              failed_products:
+                failed,
             },
             { status: 500 }
           );
         }
+
+        // -------------------------------------------------------
+        // SAVE TO VECTORIZE
+        // -------------------------------------------------------
 
         await env.VECTORIZE.upsert(
           vectors
@@ -1010,13 +1362,17 @@ Required JSON:
 
         return Response.json({
           success: true,
+
           products_found:
             products.length,
+
           vectors_indexed:
             vectors.length,
+
           failed_products:
             failed,
         });
+
       } catch (error) {
         console.error(
           "Index error:",
@@ -1026,6 +1382,7 @@ Required JSON:
         return Response.json(
           {
             success: false,
+
             error:
               error instanceof Error
                 ? error.message
@@ -1041,20 +1398,50 @@ Required JSON:
     // =========================================================
 
     if (
-      url.pathname === "/api/visual-search" &&
+      url.pathname ===
+        "/api/visual-search" &&
       request.method === "POST"
     ) {
       try {
+        console.log(
+          "================================="
+        );
+
+        console.log(
+          "VISUAL SEARCH STARTED"
+        );
+
+        console.log(
+          "================================="
+        );
+
+        // -------------------------------------------------------
+        // CHECK VECTORIZE
+        // -------------------------------------------------------
+
+        if (!env.VECTORIZE) {
+          throw new Error(
+            "VECTORIZE binding is not configured."
+          );
+        }
+
+        // -------------------------------------------------------
+        // GET IMAGE
+        // -------------------------------------------------------
+
         const formData =
           await request.formData();
 
         const image =
           formData.get("image");
 
-        if (!(image instanceof File)) {
+        if (
+          !(image instanceof File)
+        ) {
           return Response.json(
             {
               success: false,
+
               error:
                 "Please upload a dress image.",
             },
@@ -1062,20 +1449,49 @@ Required JSON:
           );
         }
 
+        console.log(
+          "IMAGE NAME:",
+          image.name
+        );
+
+        console.log(
+          "IMAGE TYPE:",
+          image.type
+        );
+
+        console.log(
+          "IMAGE SIZE:",
+          image.size
+        );
+
         const bytes =
           await image.arrayBuffer();
 
-        // =====================================================
-        // CUSTOMER FINGERPRINT
-        // =====================================================
-
-        const customer =
-          await analyzeImage(bytes);
+        // -------------------------------------------------------
+        // CUSTOMER IMAGE ANALYSIS
+        // -------------------------------------------------------
 
         console.log(
-          "ðŸŸ¢ CUSTOMER FINGERPRINT:",
-          customer
+          "ANALYZING CUSTOMER IMAGE..."
         );
+
+        const customer =
+          await analyzeImage(
+            bytes
+          );
+
+        console.log(
+          "CUSTOMER FINGERPRINT:",
+          JSON.stringify(
+            customer,
+            null,
+            2
+          )
+        );
+
+        // -------------------------------------------------------
+        // REQUIRED DATA
+        // -------------------------------------------------------
 
         if (
           !customer.garment_type ||
@@ -1083,22 +1499,38 @@ Required JSON:
         ) {
           return Response.json({
             success: true,
+
             exact_match: false,
+
             confidence: 0,
+
             reason:
               "INCOMPLETE_CUSTOMER_FINGERPRINT",
+
             customer_fingerprint:
               customer,
+
             matches: [],
           });
         }
 
-        // =====================================================
-        // CUSTOMER EMBEDDING
-        // =====================================================
+        // -------------------------------------------------------
+        // CREATE QUERY TEXT
+        // -------------------------------------------------------
 
         const queryText =
-          fingerprintText(customer);
+          fingerprintText(
+            customer
+          );
+
+        console.log(
+          "QUERY TEXT:",
+          queryText
+        );
+
+        // -------------------------------------------------------
+        // CREATE QUERY VECTOR
+        // -------------------------------------------------------
 
         const embedding =
           await env.AI.run(
@@ -1120,15 +1552,21 @@ Required JSON:
           );
         }
 
-        // =====================================================
+        console.log(
+          "QUERY VECTOR:",
+          queryVector.length
+        );
+
+        // -------------------------------------------------------
         // VECTOR SEARCH
-        // =====================================================
+        // -------------------------------------------------------
 
         const search =
           await env.VECTORIZE.query(
             queryVector,
             {
-              topK: 20,
+              topK: 50,
+
               returnMetadata: true,
             }
           );
@@ -1137,62 +1575,137 @@ Required JSON:
           search?.matches || [];
 
         console.log(
-          "ðŸ”µ VECTOR CANDIDATES:",
+          "VECTOR CANDIDATES:",
           candidates.length
         );
 
-        if (!candidates.length) {
+        if (
+          !candidates.length
+        ) {
           return Response.json({
             success: true,
+
             exact_match: false,
+
             confidence: 0,
+
+            reason:
+              "NO_VECTOR_CANDIDATES",
+
             customer_fingerprint:
               customer,
+
             matches: [],
           });
         }
 
-        // =====================================================
+        // -------------------------------------------------------
         // STRICT VERIFICATION
-        // =====================================================
+        // -------------------------------------------------------
 
         const verified = [];
 
-        for (const match of candidates) {
+        for (
+          const match of candidates
+        ) {
           const vectorScore =
-            Number(match.score || 0);
+            Number(
+              match.score || 0
+            );
 
-          // First gate.
-          if (vectorScore < 0.80) {
+          console.log(
+            "---------------------------------"
+          );
+
+          console.log(
+            "CANDIDATE:",
+            match.id
+          );
+
+          console.log(
+            "VECTOR SCORE:",
+            vectorScore
+          );
+
+          // -----------------------------------------------------
+          // FIRST VECTOR GATE
+          // -----------------------------------------------------
+
+          if (
+            vectorScore < 0.82
+          ) {
+            console.log(
+              "REJECTED: VECTOR SCORE TOO LOW"
+            );
+
             continue;
           }
+
+          const metadata =
+            match.metadata || {};
+
+          console.log(
+            "CANDIDATE METADATA:",
+            JSON.stringify(
+              metadata,
+              null,
+              2
+            )
+          );
+
+          // -----------------------------------------------------
+          // STRICT FINGERPRINT VERIFICATION
+          // -----------------------------------------------------
 
           const verification =
             verifyExact(
               customer,
-              match.metadata || {}
+              metadata
             );
 
           console.log(
-            "🔍 VERIFY:",
-            JSON.stringify({
-              id: match.id,
-              vectorScore,
-              fingerprintScore: verification.score,
-              reason: verification.reason,
-              candidate: verification.candidate,
-            })
+            "VERIFICATION:",
+            JSON.stringify(
+              verification,
+              null,
+              2
+            )
           );
 
-          if (!verification.exact) {
+          if (
+            !verification.exact
+          ) {
+            console.log(
+              "REJECTED: NOT EXACT"
+            );
+
             continue;
           }
 
-          const combined =
-            vectorScore * 0.60 +
-            verification.score * 0.40;
+          // -----------------------------------------------------
+          // COMBINED SCORE
+          // -----------------------------------------------------
 
-          if (combined < 0.82) {
+          const combined =
+            vectorScore * 0.55 +
+            verification.score * 0.45;
+
+          console.log(
+            "COMBINED SCORE:",
+            combined
+          );
+
+          // -----------------------------------------------------
+          // FINAL STRICT GATE
+          // -----------------------------------------------------
+
+          if (
+            combined < 0.86
+          ) {
+            console.log(
+              "REJECTED: COMBINED SCORE TOO LOW"
+            );
+
             continue;
           }
 
@@ -1201,23 +1714,32 @@ Required JSON:
 
             vector_score:
               Number(
-                vectorScore.toFixed(6)
+                vectorScore.toFixed(
+                  6
+                )
               ),
 
             fingerprint_score:
               Number(
-                verification.score.toFixed(6)
+                verification.score.toFixed(
+                  6
+                )
               ),
 
             combined_score:
               Number(
-                combined.toFixed(6)
+                combined.toFixed(
+                  6
+                )
               ),
 
-            metadata:
-              match.metadata || {},
+            metadata,
           });
         }
+
+        // -------------------------------------------------------
+        // SORT
+        // -------------------------------------------------------
 
         verified.sort(
           (a, b) =>
@@ -1226,31 +1748,57 @@ Required JSON:
         );
 
         console.log(
-          "ðŸŸ£ VERIFIED EXACT CANDIDATES:",
-          verified
+          "VERIFIED EXACT PRODUCTS:",
+          JSON.stringify(
+            verified,
+            null,
+            2
+          )
         );
 
-        // =====================================================
+        // -------------------------------------------------------
         // NO EXACT PRODUCT
-        // =====================================================
+        // -------------------------------------------------------
 
-        if (!verified.length) {
+        if (
+          !verified.length
+        ) {
+          console.log(
+            "NO EXACT PRODUCT FOUND."
+          );
+
           return Response.json({
             success: true,
+
             exact_match: false,
+
             confidence: 0,
+
+            reason:
+              "NO_EXACT_PRODUCT",
+
             customer_fingerprint:
               customer,
+
             matches: [],
           });
         }
 
-        // =====================================================
+        // -------------------------------------------------------
         // ONLY BEST EXACT PRODUCT
-        // =====================================================
+        // -------------------------------------------------------
 
         const best =
           verified[0];
+
+        console.log(
+          "FINAL EXACT PRODUCT:",
+          JSON.stringify(
+            best,
+            null,
+            2
+          )
+        );
 
         return Response.json({
           success: true,
@@ -1265,7 +1813,8 @@ Required JSON:
 
           matches: [
             {
-              id: best.id,
+              id:
+                best.id,
 
               score:
                 best.vector_score,
@@ -1281,28 +1830,51 @@ Required JSON:
             },
           ],
         });
+
       } catch (error) {
         console.error(
-          "Visual search error:",
+          "================================="
+        );
+
+        console.error(
+          "VISUAL SEARCH ERROR"
+        );
+
+        console.error(
           error
+        );
+
+        console.error(
+          "================================="
         );
 
         return Response.json(
           {
             success: false,
+
             error:
               error instanceof Error
                 ? error.message
                 : String(error),
+
+            error_name:
+              error?.name ||
+              "UnknownError",
           },
           { status: 500 }
         );
       }
     }
 
+    // =========================================================
+    // NOT FOUND
+    // =========================================================
+
     return new Response(
       "Not Found",
-      { status: 404 }
+      {
+        status: 404,
+      }
     );
   },
 };
