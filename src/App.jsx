@@ -73,18 +73,6 @@ const canViewBuyingPrice =
 const canManageUsers =
   isOwner || isAdmin;
 
-console.log("isOwner:", isOwner);
-console.log("isAdmin:", isAdmin);
-console.log("isStaff:", isStaff);
-console.log("canManageProducts:", canManageProducts);
-console.log("canManageUsers:", canManageUsers);
-
-console.log("🔥 ROLE CHECK");
-console.log("normalizedRole =", normalizedRole);
-console.log("isOwner =", isOwner);
-console.log("isAdmin =", isAdmin);
-console.log("isStaff =", isStaff);
-console.log("isViewer =", isViewer);
 
   // =========================================================
   // RESET PRODUCT FORM
@@ -4718,3 +4706,5 @@ const searchByImage = async () => {
     </div>
   );
 }
+
+export default App;
