@@ -1622,33 +1622,7 @@ const searchByImage = async () => {
             👥 Manage Users
           </button>
         )}
-        {/* ADD NEW PRODUCT */}
-
-{canManageProducts && (
-  <button
-    onClick={() => {
-      setActiveMenu("addProduct");
-    }}
-    style={{
-      width: "100%",
-      padding: "13px 15px",
-      marginBottom: "8px",
-      border: "none",
-      borderRadius: "8px",
-      textAlign: "left",
-      cursor: "pointer",
-      color: "#fff",
-      background:
-        activeMenu === "addProduct"
-          ? "#2563eb"
-          : "transparent",
-      fontSize: "15px",
-      fontWeight: "600",
-    }}
-  >
-    ➕ Add New Product
-  </button>
-)}
+        
 
         {/* USER INFO */}
 
