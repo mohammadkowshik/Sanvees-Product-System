@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sanvees-product-system",
+  "compatibility_date": "2026-08-10",
+
+  "main": "./worker/index.js",
+
+  "observability": {
+    "enabled": true
+  },
+
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "sanvee-product-images-768"
+    }
+  ],
+
+  "ai": {
+    "binding": "AI"
+  }
+}

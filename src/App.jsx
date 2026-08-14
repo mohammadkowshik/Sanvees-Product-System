@@ -21,6 +21,7 @@ function App() {
 
   const [imageEmbedder, setImageEmbedder] = useState(null);
   const [embeddingLoading, setEmbeddingLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   const [product, setProduct] = useState({
     name: "",
@@ -43,19 +44,47 @@ function App() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState("staff");
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState(null);
 
   const [activeMenu, setActiveMenu] = useState("dashboard");
   const [productsOpen, setProductsOpen] = useState(false);
 
   // =========================================================
-  // ROLE PERMISSIONS
-  // =========================================================
+// ROLE PERMISSIONS
+// =========================================================
 
-  const canManageProducts =
-    userRole === "admin" || userRole === "staff";
+const normalizedRole = String(userRole || "")
+  .trim()
+  .toLowerCase();
 
-  const canViewBuyingPrice =
-    userRole === "admin" || userRole === "staff";
+const isOwner = normalizedRole === "owner";
+const isAdmin = normalizedRole === "admin";
+const isStaff = normalizedRole === "staff";
+const isViewer = normalizedRole === "viewer";
+
+const canManageProducts =
+  isOwner || isAdmin || isStaff;
+
+const canViewBuyingPrice =
+  isOwner || isAdmin || isStaff;
+
+const canManageUsers =
+  isOwner || isAdmin;
+
+console.log("isOwner:", isOwner);
+console.log("isAdmin:", isAdmin);
+console.log("isStaff:", isStaff);
+console.log("canManageProducts:", canManageProducts);
+console.log("canManageUsers:", canManageUsers);
+
+console.log("🔥 ROLE CHECK");
+console.log("normalizedRole =", normalizedRole);
+console.log("isOwner =", isOwner);
+console.log("isAdmin =", isAdmin);
+console.log("isStaff =", isStaff);
+console.log("isViewer =", isViewer);
 
   // =========================================================
   // RESET PRODUCT FORM
@@ -155,7 +184,14 @@ function App() {
   // =========================================================
 
   const createNewUser = async () => {
-    if (!newUserEmail || !newUserPassword) {
+    if (!canManageUsers) {
+      alert("আপনার user create করার permission নেই।");
+      return;
+    }
+
+    const email = newUserEmail.trim();
+
+    if (!email || !newUserPassword) {
       alert("Email এবং Password দিন।");
       return;
     }
@@ -169,10 +205,10 @@ function App() {
       setSaving(true);
 
       const {
-        data: { session },
+        data: { session: currentSession },
       } = await supabase.auth.getSession();
 
-      if (!session?.access_token) {
+      if (!currentSession?.access_token) {
         alert("আপনি Login করা নেই।");
         return;
       }
@@ -183,10 +219,10 @@ function App() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${currentSession.access_token}`,
           },
           body: JSON.stringify({
-            email: newUserEmail,
+            email,
             password: newUserPassword,
             role: newUserRole,
           }),
@@ -197,27 +233,139 @@ function App() {
 
       if (!response.ok) {
         console.error("Create user error:", result);
-
         alert(result.error || "User create করা যায়নি।");
         return;
       }
 
-      alert(
-        `${
-          newUserRole === "staff" ? "Staff" : "Viewer"
-        } user successfully created! ✅`
-      );
+      const roleName =
+        newUserRole === "admin"
+          ? "Admin"
+          : newUserRole === "staff"
+          ? "Staff"
+          : "Viewer";
+
+      alert(`${roleName} user successfully created! ✅`);
 
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserRole("staff");
-      setUserModalOpen(false);
+
+      // নতুন user তৈরি হওয়ার পর একই modal-এ list refresh হবে।
+      await loadUsers();
     } catch (error) {
       console.error("Create user unexpected error:", error);
-
       alert("User create করার সময় সমস্যা হয়েছে।");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // =========================================================
+  // LOAD USERS
+  // =========================================================
+
+  const loadUsers = async () => {
+    if (!canManageUsers) return;
+
+    try {
+      setUsersLoading(true);
+
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      if (!currentSession?.access_token) {
+        alert("আপনি Login করা নেই।");
+        return;
+      }
+
+      const response = await fetch(
+        "https://lnxfltmqphmcpffhcywp.supabase.co/functions/v1/list-users",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${currentSession.access_token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("Load users error:", result);
+        alert(result.error || "User list load করা যায়নি।");
+        return;
+      }
+
+      setUsers(Array.isArray(result.users) ? result.users : []);
+    } catch (error) {
+      console.error("Load users unexpected error:", error);
+      alert("User list load করার সময় সমস্যা হয়েছে।");
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  // =========================================================
+  // REMOVE USER
+  // =========================================================
+
+  const removeUser = async (userId, userEmail) => {
+    if (!canManageUsers || !userId) return;
+
+    // নিজের account বা Owner account কখনো remove করা যাবে না।
+    if (userId === currentUserId) {
+      alert("আপনার নিজের account remove করা যাবে না।");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${userEmail || "এই user"}-কে permanently remove করতে চান?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setRemovingUserId(userId);
+
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      if (!currentSession?.access_token) {
+        alert("আপনি Login করা নেই।");
+        return;
+      }
+
+      const response = await fetch(
+        "https://lnxfltmqphmcpffhcywp.supabase.co/functions/v1/remove-user",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentSession.access_token}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("Remove user error:", result);
+        alert(result.error || "User remove করা যায়নি।");
+        return;
+      }
+
+      alert("User successfully removed! ✅");
+      await loadUsers();
+    } catch (error) {
+      console.error("Remove user unexpected error:", error);
+      alert("User remove করার সময় সমস্যা হয়েছে।");
+    } finally {
+      setRemovingUserId(null);
     }
   };
 
@@ -289,11 +437,13 @@ function App() {
 
       if (!embedder) {
         console.log("🤖 Loading AI image model...");
+          console.log("⏳ Starting CLIP model download...");
 
         embedder = await pipeline(
           "image-feature-extraction",
           "Xenova/clip-vit-base-patch32"
         );
+          console.log("✅ CLIP model loaded successfully!");
 
         setImageEmbedder(() => embedder);
       }
@@ -329,6 +479,7 @@ function App() {
       } = await supabase.auth.getSession();
 
       setSession(session);
+      setCurrentUserId(session?.user?.id || null);
       setAuthLoading(false);
     };
 
@@ -350,27 +501,32 @@ function App() {
   // =========================================================
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+  if (!session?.user?.id) return;
 
-    const loadUserRole = async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
+  const loadUserRole = async () => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .single();
 
-      if (error) {
-        console.error("Role load error:", error);
-        return;
-      }
+    if (error) {
+      console.error("Role load error:", error);
+      return;
+    }
 
-      console.log("USER ROLE:", data.role);
+    const role = String(data.role || "")
+      .trim()
+      .toLowerCase();
 
-      setUserRole(data.role);
-    };
+    console.log("USER ROLE FROM DATABASE:", data.role);
+    console.log("NORMALIZED USER ROLE:", role);
 
-    loadUserRole();
-  }, [session]);
+    setUserRole(role);
+  };
+
+  loadUserRole();
+}, [session]);
 
   // =========================================================
   // LOAD PRODUCTS AFTER ROLE
@@ -638,14 +794,6 @@ function App() {
 
       const imageUrl = publicUrlData.publicUrl;
 
-      const embedding = await getImageEmbedding(imageUrl);
-
-      if (!embedding || embedding.length !== 512) {
-        throw new Error(
-          `Invalid embedding dimension: ${embedding?.length}`
-        );
-      }
-
       const colorVariants =
         await uploadColorVariantImages(
           product.color_variants,
@@ -682,8 +830,6 @@ function App() {
 
               image_url: imageUrl,
 
-              image_embedding: embedding,
-
               color_variants: colorVariants,
             },
           ])
@@ -709,6 +855,48 @@ function App() {
         data,
         ...currentProducts,
       ]);
+      // =========================================================
+// AUTOMATIC AI VISUAL INDEXING
+// =========================================================
+
+try {
+  console.log("🔵 Starting automatic AI visual indexing...");
+
+  const indexResponse = await fetch(
+    "https://sanvees-product-system.mohammadkowshik77.workers.dev/api/index-products",
+    {
+      method: "POST",
+    }
+  );
+
+  const indexResult = await indexResponse.json();
+
+  console.log("🟢 AI INDEX RESULT:", indexResult);
+
+  if (!indexResponse.ok || !indexResult.success) {
+    console.error(
+      "AI visual indexing failed:",
+      indexResult
+    );
+
+    alert(
+      "Product save হয়েছে, কিন্তু AI image search index update করা যায়নি।"
+    );
+  } else {
+    console.log(
+      "✅ Product automatically added to AI visual search index."
+    );
+  }
+} catch (indexError) {
+  console.error(
+    "Automatic AI indexing error:",
+    indexError
+  );
+
+  alert(
+    "Product save হয়েছে, কিন্তু AI visual search index update করা যায়নি।"
+  );
+}
 
       resetProductForm();
 
@@ -990,99 +1178,126 @@ function App() {
     }
   };
 
-  // =========================================================
-  // IMAGE SEARCH
-  // =========================================================
+// =========================================================
+// IMAGE SEARCH - EXACT PRODUCT ONLY
+// =========================================================
 
-  const searchByImage = async () => {
-    if (!searchImage) {
-      alert(
-        "আগে একটি Dress Image Paste করুন."
+const searchByImage = async () => {
+  if (!searchImage) {
+    alert("আগে একটি Dress Image select করুন।");
+    return;
+  }
+
+  try {
+    setEmbeddingLoading(true);
+
+    const formData = new FormData();
+    formData.append("image", searchImage);
+
+    const response = await fetch(
+      "https://sanvees-product-system.mohammadkowshik77.workers.dev/api/visual-search",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    const result = await response.json();
+
+    console.log("AI VISUAL SEARCH RESULT:", result);
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error || "AI visual search failed."
       );
+    }
+
+    // =====================================================
+    // EXACT MATCH ONLY
+    // Similar products will NEVER be displayed.
+    // =====================================================
+
+    if (!result.exact_match) {
+      setProducts([]);
+
+      alert(
+        "এই ছবির সাথে website-এর কোনো exact same product পাওয়া যায়নি।"
+      );
+
       return;
     }
 
-    try {
-      setEmbeddingLoading(true);
+    const matches = result.matches || [];
 
-      const searchImageUrl =
-        URL.createObjectURL(searchImage);
+    console.log("AI EXACT MATCHES:", matches);
 
-      const queryEmbedding =
-        await getImageEmbedding(
-          searchImageUrl
-        );
-
-      URL.revokeObjectURL(
-        searchImageUrl
-      );
-
-      console.log(
-        "Search embedding dimensions:",
-        queryEmbedding.length
-      );
-
-      if (queryEmbedding.length !== 512) {
-        throw new Error(
-          `Expected 512 dimensions, got ${queryEmbedding.length}`
-        );
-      }
-
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "match_products",
-        {
-          query_embedding:
-            queryEmbedding,
-
-          match_threshold: 0.70,
-
-          match_count: 1,
-        }
-      );
-
-      console.log("MATCH DATA:", data);
-      console.log("MATCH ERROR:", error);
-
-      if (error) {
-        console.error(
-          "Image search error:",
-          error
-        );
-
-        alert(
-          "Image search করা যায়নি."
-        );
-
-        return;
-      }
-
-      setProducts(data || []);
-
-      if (!data || data.length === 0) {
-        alert(
-          "কাছাকাছি কোনো product পাওয়া যায়নি।"
-        );
-      } else {
-        alert(
-          `${data.length}টি কাছাকাছি product পাওয়া গেছে।`
-        );
-      }
-    } catch (error) {
-      console.error(
-        "AI image search error:",
-        error
-      );
+    if (matches.length === 0) {
+      setProducts([]);
 
       alert(
-        "AI image search-এর সময় সমস্যা হয়েছে."
+        "এই ছবির সাথে কোনো exact same product পাওয়া যায়নি।"
       );
-    } finally {
-      setEmbeddingLoading(false);
+
+      return;
     }
-  };
+
+    // =====================================================
+    // ONLY THE BEST / FIRST EXACT MATCH
+    // =====================================================
+
+    const exactMatch = matches[0];
+    const metadata = exactMatch.metadata || {};
+
+    const exactProduct = {
+      id: metadata.product_id || exactMatch.id,
+      name: metadata.name || "Unnamed Product",
+      details: metadata.details || "",
+      color: metadata.color || "",
+      size: metadata.size || "",
+      price: metadata.price ?? 0,
+      stock: metadata.stock ?? 0,
+      image_url: metadata.image_url || "",
+      similarity_score: exactMatch.score || 0,
+    };
+
+    // Product image না থাকলে এটাকে valid result হিসেবে দেখাব না।
+    if (!exactProduct.image_url) {
+      setProducts([]);
+
+      alert(
+        "Exact product পাওয়া গেছে, কিন্তু product image পাওয়া যায়নি।"
+      );
+
+      return;
+    }
+
+    // =====================================================
+    // SHOW ONLY EXACT PRODUCT
+    // =====================================================
+
+    setProducts([exactProduct]);
+
+    console.log("EXACT PRODUCT SHOWN:", exactProduct);
+
+    alert(
+      `Exact same product পাওয়া গেছে।`
+    );
+
+  } catch (error) {
+    console.error(
+      "AI image search error:",
+      error
+    );
+
+    setProducts([]);
+
+    alert(
+      "AI image search-এর সময় সমস্যা হয়েছে।"
+    );
+  } finally {
+    setEmbeddingLoading(false);
+  }
+};
 
   // =========================================================
   // SHOW ALL PRODUCTS AGAIN
@@ -1101,13 +1316,16 @@ function App() {
   // =========================================================
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+  await supabase.auth.signOut();
 
-    setSession(null);
-    setUserRole(null);
-    setActiveMenu("dashboard");
-    setProductsOpen(false);
-  };
+  setSession(null);
+  setCurrentUserId(null);
+  setUserRole(null);
+  setUsers([]);
+  setImageEmbedder(null);
+  setActiveMenu("dashboard");
+  setProductsOpen(false);
+};
 
   // =========================================================
   // NORMAL SEARCH
@@ -1149,9 +1367,8 @@ function App() {
     return (
       <Login
         onLogin={(user) => {
-          setSession({
-            user,
-          });
+          setSession({ user });
+          setCurrentUserId(user?.id || null);
         }}
       />
     );
@@ -1390,11 +1607,12 @@ function App() {
 
         {/* MANAGE USERS */}
 
-        {userRole === "admin" && (
+        {canManageUsers && (
           <button
-            onClick={() => {
+           onClick={() => {
               setActiveMenu("users");
               setUserModalOpen(true);
+              loadUsers();
             }}
             style={{
               width: "100%",
@@ -1416,6 +1634,33 @@ function App() {
             👥 Manage Users
           </button>
         )}
+        {/* ADD NEW PRODUCT */}
+
+{canManageProducts && (
+  <button
+    onClick={() => {
+      setActiveMenu("addProduct");
+    }}
+    style={{
+      width: "100%",
+      padding: "13px 15px",
+      marginBottom: "8px",
+      border: "none",
+      borderRadius: "8px",
+      textAlign: "left",
+      cursor: "pointer",
+      color: "#fff",
+      background:
+        activeMenu === "addProduct"
+          ? "#2563eb"
+          : "transparent",
+      fontSize: "15px",
+      fontWeight: "600",
+    }}
+  >
+    ➕ Add New Product
+  </button>
+)}
 
         {/* USER INFO */}
 
@@ -3736,32 +3981,21 @@ function App() {
               </button>
 
               <button
-                onClick={() => {
-                  setEditModalOpen(
-                    false
-                  );
-
-                  resetProductForm();
-                }}
-                style={{
-                  padding:
-                    "12px",
-                  border:
-                    "none",
-                  borderRadius:
-                    "8px",
-                  background:
-                    "#777",
-                  color:
-                    "#fff",
-                  cursor:
-                    "pointer",
-                  fontWeight:
-                    "600",
-                }}
-              >
-                ❌ Cancel
-              </button>
+  onClick={() => {
+    setEditModalOpen(false);
+  }}
+  style={{
+    padding: "12px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#777",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: "600",
+  }}
+>
+  ❌ Cancel
+</button>
             </div>
           </div>
         </div>
@@ -3771,223 +4005,333 @@ function App() {
           USER MANAGEMENT MODAL
       ===================================================== */}
 
-      {userModalOpen &&
-        userRole === "admin" && (
+      {userModalOpen && canManageUsers && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            zIndex: 1200,
+            overflowY: "auto",
+          }}
+        >
           <div
             style={{
-              position: "fixed",
-              inset: 0,
-              background:
-                "rgba(0,0,0,0.6)",
-              display: "flex",
-              alignItems:
-                "center",
-              justifyContent:
-                "center",
-              padding: "20px",
-              zIndex: 1100,
+              background: "#fff",
+              width: "100%",
+              maxWidth: "720px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              borderRadius: "14px",
+              padding: "25px",
+              boxSizing: "border-box",
             }}
           >
+            <h2 style={{ marginTop: 0 }}>
+              👥 Manage Users
+            </h2>
+
+            <p style={{ marginTop: 0, color: "#444" }}>
+              {isOwner
+                ? "এখানে Admin, Staff অথবা Viewer account তৈরি করতে পারবেন।"
+                : "এখানে Staff অথবা Viewer account তৈরি করতে পারবেন।"}
+            </p>
+
+            {/* CREATE USER FORM */}
             <div
               style={{
-                background: "#fff",
-                width: "100%",
-                maxWidth: "500px",
-                borderRadius: "14px",
-                padding: "25px",
-                boxSizing:
-                  "border-box",
+                display: "grid",
+                gap: "12px",
               }}
             >
-              <h2>
-                👥 Manage Users
-              </h2>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="example@email.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    boxSizing: "border-box",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "7px",
+                  }}
+                />
+              </div>
 
-              <p>
-                এখানে Staff অথবা Viewer account
-                তৈরি করতে পারবে।
-              </p>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    boxSizing: "border-box",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "7px",
+                  }}
+                />
+              </div>
 
-              <label>
-                Email Address
-              </label>
-
-              <input
-                type="email"
-                placeholder="example@email.com"
-                value={
-                  newUserEmail
-                }
-                onChange={(e) =>
-                  setNewUserEmail(
-                    e.target.value
-                  )
-                }
-                style={{
-                  width:
-                    "100%",
-                  marginBottom:
-                    "15px",
-                  padding:
-                    "10px",
-                  boxSizing:
-                    "border-box",
-                  border:
-                    "1px solid #d1d5db",
-                  borderRadius:
-                    "7px",
-                }}
-              />
-
-              <label>
-                Password
-              </label>
-
-              <input
-                type="password"
-                placeholder="Password"
-                value={
-                  newUserPassword
-                }
-                onChange={(e) =>
-                  setNewUserPassword(
-                    e.target.value
-                  )
-                }
-                style={{
-                  width:
-                    "100%",
-                  marginBottom:
-                    "15px",
-                  padding:
-                    "10px",
-                  boxSizing:
-                    "border-box",
-                  border:
-                    "1px solid #d1d5db",
-                  borderRadius:
-                    "7px",
-                }}
-              />
-
-              <label>
-                Access Role
-              </label>
-
-              <select
-                value={
-                  newUserRole
-                }
-                onChange={(e) =>
-                  setNewUserRole(
-                    e.target.value
-                  )
-                }
-                style={{
-                  width:
-                    "100%",
-                  marginBottom:
-                    "20px",
-                  padding:
-                    "10px",
-                  border:
-                    "1px solid #d1d5db",
-                  borderRadius:
-                    "7px",
-                }}
-              >
-                <option value="staff">
-                  Staff
-                </option>
-
-                <option value="viewer">
-                  Viewer
-                </option>
-              </select>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Access Role
+                </label>
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "7px",
+                  }}
+                >
+                  {isOwner && <option value="admin">Admin</option>}
+                  <option value="staff">Staff</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </div>
 
               <div
                 style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "1fr 1fr",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
                   gap: "10px",
+                  marginTop: "5px",
                 }}
               >
                 <button
-                  onClick={
-                    createNewUser
-                  }
-                  disabled={
-                    saving
-                  }
+                  onClick={createNewUser}
+                  disabled={saving}
                   style={{
-                    padding:
-                      "12px",
-                    border:
-                      "none",
-                    borderRadius:
-                      "8px",
-                    background:
-                      saving
-                        ? "#9ca3af"
-                        : "#16a34a",
-                    color:
-                      "#fff",
-                    cursor:
-                      saving
-                        ? "not-allowed"
-                        : "pointer",
-                    fontWeight:
-                      "600",
+                    padding: "12px",
+                    border: "none",
+                    borderRadius: "8px",
+                    background: saving ? "#9ca3af" : "#16a34a",
+                    color: "#fff",
+                    cursor: saving ? "not-allowed" : "pointer",
+                    fontWeight: "600",
                   }}
                 >
-                  {saving
-                    ? "⏳ Creating..."
-                    : "➕ Create User"}
+                  {saving ? "⏳ Creating..." : "➕ Create User"}
                 </button>
 
                 <button
                   onClick={() => {
-                    setUserModalOpen(
-                      false
-                    );
-
-                    setNewUserEmail(
-                      ""
-                    );
-
-                    setNewUserPassword(
-                      ""
-                    );
-
-                    setNewUserRole(
-                      "staff"
-                    );
+                    setUserModalOpen(false);
+                    setNewUserEmail("");
+                    setNewUserPassword("");
+                    setNewUserRole("staff");
                   }}
                   style={{
-                    padding:
-                      "12px",
-                    border:
-                      "none",
-                    borderRadius:
-                      "8px",
-                    background:
-                      "#777",
-                    color:
-                      "#fff",
-                    cursor:
-                      "pointer",
-                    fontWeight:
-                      "600",
+                    padding: "12px",
+                    border: "none",
+                    borderRadius: "8px",
+                    background: "#777",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: "600",
                   }}
                 >
                   ❌ Close
                 </button>
               </div>
             </div>
+
+            {/* USER LIST */}
+            <div
+              style={{
+                marginTop: "25px",
+                borderTop: "1px solid #e5e7eb",
+                paddingTop: "20px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "10px",
+                  marginBottom: "15px",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "18px",
+                  }}
+                >
+                  👥 Users With Access
+                </h3>
+
+                <button
+                  onClick={loadUsers}
+                  disabled={usersLoading}
+                  style={{
+                    padding: "7px 10px",
+                    border: "none",
+                    borderRadius: "7px",
+                    background: usersLoading ? "#9ca3af" : "#2563eb",
+                    color: "#fff",
+                    cursor: usersLoading ? "not-allowed" : "pointer",
+                    fontWeight: "600",
+                  }}
+                >
+                  {usersLoading ? "⏳ Loading..." : "🔄 Refresh"}
+                </button>
+              </div>
+
+              {usersLoading ? (
+                <p style={{ textAlign: "center", color: "#666" }}>
+                  ⏳ Loading users...
+                </p>
+              ) : users.length === 0 ? (
+                <p
+                  style={{
+                    textAlign: "center",
+                    color: "#777",
+                    padding: "20px 0",
+                  }}
+                >
+                  কোনো user পাওয়া যায়নি।
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
+                  {users.map((item) => {
+                    const roleLabel =
+                      item.role === "owner"
+                        ? "👑 Owner"
+                        : item.role === "admin"
+                        ? "🛡️ Admin"
+                        : item.role === "staff"
+                        ? "👤 Staff"
+                        : "👀 Viewer";
+
+                    const isProtected =
+                      item.role === "owner" ||
+                      item.id === currentUserId;
+
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          padding: "12px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "10px",
+                          background: "#f9fafb",
+                        }}
+                      >
+                        <div
+                          style={{
+                            minWidth: 0,
+                            flex: 1,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "600",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {item.email}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "4px",
+                              fontSize: "14px",
+                              color: "#555",
+                            }}
+                          >
+                            {roleLabel}
+                            {item.id === currentUserId && " • You"}
+                          </div>
+                        </div>
+
+                        {isProtected ? (
+                          <span
+                            style={{
+                              fontSize: "13px",
+                              color: "#777",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            🔒 Protected
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => removeUser(item.id, item.email)}
+                            disabled={removingUserId === item.id}
+                            style={{
+                              padding: "8px 12px",
+                              border: "none",
+                              borderRadius: "7px",
+                              background:
+                                removingUserId === item.id
+                                  ? "#9ca3af"
+                                  : "#dc2626",
+                              color: "#fff",
+                              cursor:
+                                removingUserId === item.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                              fontWeight: "600",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {removingUserId === item.id
+                              ? "Removing..."
+                              : "🗑 Remove"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
       {/* =====================================================
           PRODUCT DETAIL MODAL
@@ -4374,5 +4718,3 @@ function App() {
     </div>
   );
 }
-
-export default App;
