@@ -1183,12 +1183,12 @@ const searchByImage = async () => {
     formData.append("image", searchImage);
 
     const response = await fetch(
-      "https://sanvees-product-system.mohammadkowshik77.workers.dev/api/visual-search",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
+  "https://sanvees-product-system.sanvee-products-system.workers.dev/api/visual-search",
+  {
+    method: "POST",
+    body: formData,
+  }
+);
 
     const result = await response.json();
 
