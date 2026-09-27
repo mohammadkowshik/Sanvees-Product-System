@@ -207,7 +207,7 @@ const B = normalizeSimilarityText(b);
         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
       const regex = new RegExp(
-        "(?:^|\\n)\\s*(?:[-*•]\\s*)?\\*{0,2}" +
+        "(?:^|\\n)\\s*(?:[-*ï¿½]\\s*)?\\*{0,2}" +
           escaped +
           "\\*{0,2}\\s*:\\s*(.+?)(?=\\n|$)",
         "im"
@@ -220,7 +220,7 @@ const B = normalizeSimilarityText(b);
       return cleanText(
         match[1]
           .replace(/\*\*/g, "")
-          .replace(/^[-*•]\s*/, "")
+          .replace(/^[-*ï¿½]\s*/, "")
       );
     }
 
@@ -634,78 +634,48 @@ const B = normalizeSimilarityText(b);
       }
     }
 
-        // -------------------------------------------------------
-    // 3. FALLBACK
     // -------------------------------------------------------
+// 3. ROBUST NATURAL-LANGUAGE COLOR FALLBACK
+// -------------------------------------------------------
 
-    if (!detectedDominantColor) {
-
-      for (const color of colors) {
-
-        if (
-          prose.includes(
-            `${color} color scheme`
-          ) ||
-          prose.includes(
-            `${color}-colored`
-          ) ||
-          prose.includes(
-            `${color} hue`
-          ) ||
-          prose.includes(
-            `vibrant ${color}`
-          ) ||
-          prose.includes(
-            `bright ${color}`
-          ) ||
-          prose.includes(
-            `deep ${color}`
-          ) ||
-          prose.includes(
-            `rich ${color}`
-          ) ||
-          prose.includes(
-            `bold ${color}`
-          ) ||
-          prose.includes(
-            `soft ${color}`
-          ) ||
-          prose.includes(
-            `pastel ${color}`
-          )
-        ) {
-          detectedDominantColor =
-            color;
-
-          break;
-        }
-      }
+if (!detectedDominantColor) {
+  for (const color of colors) {
+    if (
+      prose.includes(`${color} hue`) ||
+      prose.includes(`vibrant ${color}`) ||
+      prose.includes(`bright ${color}`) ||
+      prose.includes(`deep ${color}`) ||
+      prose.includes(`rich ${color}`) ||
+      prose.includes(`bold ${color}`) ||
+      prose.includes(`soft ${color}`) ||
+      prose.includes(`pastel ${color}`) ||
+      prose.includes(`${color}-colored`) ||
+      prose.includes(`${color} colored`) ||
+      prose.includes(`dominant ${color}`) ||
+      prose.includes(`dominant color ${color}`) ||
+      prose.includes(`dominant color is ${color}`) ||
+      prose.includes(`dominant color of the garment is ${color}`)
+    ) {
+      detectedDominantColor = color;
+      break;
     }
   }
-
-  // ---------------------------------------------------------
-  // APPLY DETECTED DOMINANT COLOR
-  // ---------------------------------------------------------
-  // Explicit prose evidence is stronger than the raw AI field.
-
-  if (detectedDominantColor) {
-
-    result.dominant_color =
-      detectedDominantColor;
-
-  } else if (
-    !result.dominant_color ||
-    result.dominant_color.toLowerCase() === "single" ||
-    result.dominant_color.toLowerCase() === "single colour"
-  ) {
-
-    result.dominant_color =
-      "";
+}
   }
 
-  // ---------------------------------------------------------
-  // PATTERN
-  // ---------------------------------------------------------
+// ---------------------------------------------------------
+// APPLY DETECTED DOMINANT COLOR
+// ---------------------------------------------------------
+
+if (detectedDominantColor) {
+  result.dominant_color = detectedDominantColor;
+} else {
+  result.dominant_color = "";
+}
+
+// ---------------------------------------------------------
+// PATTERN
+// ---------------------------------------------------------
 
   if (!result.pattern && prose) {
     if (
@@ -762,6 +732,7 @@ const B = normalizeSimilarityText(b);
   if (!result.neckline && prose) {
     if (
       prose.includes("round neckline") ||
+      
       prose.includes("round neck")
     ) {
       result.neckline = "Round neckline";
@@ -784,33 +755,39 @@ const B = normalizeSimilarityText(b);
     }
   }
 
-  // ---------------------------------------------------------
-  // SLEEVES
-  // ---------------------------------------------------------
+// ---------------------------------------------------------
+// SLEEVES
+// ---------------------------------------------------------
 
-  if (!result.sleeves && prose) {
-    if (
-      prose.includes("long sleeves") ||
-      prose.includes("long-sleeved")
-    ) {
-      result.sleeves = "Long sleeves";
-    } else if (
-      prose.includes("short sleeves") ||
-      prose.includes("short-sleeved")
-    ) {
-      result.sleeves = "Short sleeves";
-    } else if (
-      prose.includes("three quarter sleeves") ||
-      prose.includes("three-quarter sleeves")
-    ) {
-      result.sleeves = "Three-quarter sleeves";
-    } else if (
-      prose.includes("bell-shaped sleeves") ||
-      prose.includes("bell shaped sleeves")
-    ) {
-      result.sleeves = "Bell-shaped sleeves";
-    }
+if (!result.sleeves && prose) {
+  if (
+    prose.includes("long sleeves") ||
+    prose.includes("long-sleeved") ||
+    prose.includes("sleeves are long") ||
+    prose.includes("long and flowy sleeves") ||
+    prose.includes("long and flowing sleeves")
+  ) {
+    result.sleeves = "Long sleeves";
+  } else if (
+    prose.includes("short sleeves") ||
+    prose.includes("short-sleeved") ||
+    prose.includes("sleeves are short")
+  ) {
+    result.sleeves = "Short sleeves";
+  } else if (
+    prose.includes("three quarter sleeves") ||
+    prose.includes("three-quarter sleeves") ||
+    prose.includes("sleeves are three quarter") ||
+    prose.includes("sleeves are three-quarter")
+  ) {
+    result.sleeves = "Three-quarter sleeves";
+  } else if (
+    prose.includes("bell-shaped sleeves") ||
+    prose.includes("bell shaped sleeves")
+  ) {
+    result.sleeves = "Bell-shaped sleeves";
   }
+}
 
   // ---------------------------------------------------------
   // CUFFS
@@ -1097,6 +1074,13 @@ const B = normalizeSimilarityText(b);
       if (
         prose.includes(
           `dominant color of the garment is ${color}`
+          prose.includes(`${color} color`) ||
+prose.includes(`its ${color} color`) ||
+prose.includes(`with an ${color} color`) ||
+prose.includes(`with a ${color} garment`) ||
+prose.includes(`predominantly ${color}`) ||
+prose.includes(`primarily ${color}`) ||
+prose.includes(`mostly ${color}`)
         ) ||
         prose.includes(
           `dominant color is ${color}`
@@ -1187,7 +1171,7 @@ const B = normalizeSimilarityText(b);
   return result;
 }
 
-    // =========================================================
+        // =========================================================
     // AI IMAGE ANALYSIS
     // =========================================================
 
@@ -1198,64 +1182,359 @@ const B = normalizeSimilarityText(b);
           image: [
             ...new Uint8Array(imageBytes),
           ],
-          max_tokens: 1024,
 
           prompt: `
-Analyze ONLY the clothing garment in the image.
+Analyze ONLY the clothing garment shown in the image.
 
-Ignore:
-- face
-- body
+IGNORE COMPLETELY:
+- person's face
+- person's body
 - skin
 - hair
 - hands
 - background
-- room
 - furniture
+- room
+- walls
+- floor
 - lighting
 - shadows
 
-Identify the garment as precisely as possible.
+Your job is to create a STRICT VISUAL FINGERPRINT of the garment.
 
-Focus on:
-- garment type
-- dominant color
-- secondary colors
-- pattern
-- embroidery
-- neckline
-- sleeves
-- cuffs
-- fit
-- length
-- hem
-- border
-- dupatta/orna
-- fabric appearance
-- distinctive visual details
+The fingerprint will be used to determine whether another photograph
+contains the SAME clothing product.
 
-COLOR RULE:
-Use only colors actually visible on the garment.
-Never use background, skin, lighting, or furniture colors.
+Therefore describe ONLY visible garment characteristics.
 
-EXACT MATCH RULE:
-Describe distinctive visual characteristics that can help determine whether another photograph shows the SAME clothing product.
+=========================================================
+FIELD RULES
+=========================================================
+
+1. garment_type
+
+Identify the clothing type precisely.
+
+Examples:
+- Salwar Kameez
+- Saree
+- Kurti
+- Lehenga
+- Blouse
+- Kameez
+- Anarkali
+- Gown
+
+Do not guess a more specific garment type unless visually supported.
+
+---------------------------------------------------------
+
+2. dominant_color
+
+Return the main visible garment color.
+
+Use a simple normalized color name.
+
+Examples:
+- orange
+- red
+- pink
+- green
+- blue
+- black
+- white
+- cream
+- yellow
+- purple
+- brown
+- beige
+- maroon
+- navy
+
+Do NOT describe lighting as a color.
+
+---------------------------------------------------------
+
+3. secondary_colors
+
+Return ONLY clearly visible additional garment colors.
+
+Use an array.
+
+Example:
+["green", "pink", "white"]
+
+If none are clearly visible:
+
+[]
+
+---------------------------------------------------------
+
+4. pattern
+
+Describe the actual visible pattern.
+
+Examples:
+- floral
+- paisley
+- geometric
+- striped
+- checked
+- printed
+- solid
+- floral paisley
+- geometric floral
+
+Do not invent a pattern.
+
+---------------------------------------------------------
+
+5. embroidery
+
+Describe visible embroidery.
+
+Examples:
+- heavy floral embroidery
+- gold embroidery
+- thread embroidery
+- geometric embroidery
+- embroidered
+- none
+
+If embroidery cannot be clearly determined:
+
+""
+
+---------------------------------------------------------
+
+6. neckline
+
+Describe the visible neckline.
+
+Examples:
+- round
+- V-neck
+- square
+- high round
+- collar
+- boat neck
+
+Do not guess.
+
+---------------------------------------------------------
+
+7. sleeves
+
+Describe sleeve shape and approximate length.
+
+Examples:
+- long straight
+- short
+- three-quarter
+- bell
+- sleeveless
+
+---------------------------------------------------------
+
+8. cuffs
+
+Describe cuffs ONLY if clearly visible.
+
+Examples:
+- plain
+- embroidered
+- decorative
+- flared
+- buttoned
+
+If not visible:
+
+""
+
+---------------------------------------------------------
+
+9. fit
+
+Describe silhouette.
+
+Examples:
+- fitted
+- loose
+- relaxed
+- straight
+- flared
+- A-line
+
+---------------------------------------------------------
+
+10. length
+
+Describe garment length.
+
+Examples:
+- short
+- knee-length
+- ankle-length
+- floor-length
+
+If not confidently visible:
+
+""
+
+---------------------------------------------------------
+
+11. hem
+
+Describe the bottom edge.
+
+Examples:
+- straight
+- curved
+- flared
+- embroidered
+- decorative
+
+If not visible:
+
+""
+
+---------------------------------------------------------
+
+12. border
+
+Describe ONLY an actual visible border.
+
+Examples:
+- wide decorative border
+- embroidered border
+- gold border
+- floral border
+- narrow border
+
+If no border is visible:
+
+""
+
+---------------------------------------------------------
+
+13. dupatta_or_orna
+
+Determine whether a dupatta/orna is visible.
+
+Use concise values such as:
+- visible
+- matching
+- orange matching
+- patterned
+- not visible
+
+If uncertain:
+
+""
+
+---------------------------------------------------------
+
+14. fabric_appearance
+
+Describe ONLY visible surface appearance.
+
+Examples:
+- matte
+- shiny
+- smooth
+- textured
+- lightweight
+- sheer
+
+Do NOT guess the actual fabric material unless visually obvious.
+
+---------------------------------------------------------
+
+15. distinctive_details
+
+This is extremely important.
+
+List ONLY distinctive visual features that can help identify
+the SAME physical product in another photograph.
+
+Examples:
+- large paisley motifs
+- dense floral embroidery
+- wide repeating floral border
+- contrasting sleeve cuffs
+- tassel details
+- unusual neckline embroidery
+- repeated geometric motifs
+
+Do NOT repeat generic field names.
+
+Do NOT write explanations.
+
+---------------------------------------------------------
+
+16. visual_fingerprint
+
+Write ONE concise sentence.
+
+It MUST describe ONLY the garment's distinctive visual design.
 
 IMPORTANT:
-RETURN ONLY VALID JSON.
+
+DO NOT include field names.
+
+DO NOT write JSON inside this field.
 
 DO NOT write explanations.
-DO NOT write Markdown.
+
 DO NOT write bullet points.
-DO NOT describe the person.
-DO NOT repeat the field names inside visual_fingerprint.
 
-Every field MUST contain a concise value when visible.
-If a field cannot be determined from the image, use an empty string.
+DO NOT repeat information unnecessarily.
 
-The visual_fingerprint MUST be a concise description of ONLY the garment's distinctive visual design.
+GOOD EXAMPLE:
 
-Required JSON:
+"Orange salwar kameez with floral-paisley motifs, dense embroidery,
+high round neckline, long straight sleeves, and a wide repeating
+floral border."
+
+BAD EXAMPLE:
+
+"The garment_type is salwar kameez. The dominant_color is orange.
+The pattern is floral."
+
+The second example is FORBIDDEN.
+
+=========================================================
+STRICT OUTPUT RULES
+=========================================================
+
+RETURN ONLY VALID JSON.
+
+No Markdown.
+
+No code fences.
+
+No explanations.
+
+No bullet points.
+
+No field names inside visual_fingerprint.
+
+Every field MUST contain a concise value when it is visually supported.
+
+If a field cannot be determined confidently, return an empty string.
+
+Do NOT invent information.
+
+Do NOT infer colors from background, skin, lighting or furniture.
+
+Do NOT infer fabric material when only appearance is visible.
+
+Do NOT describe the person.
+
+=========================================================
+REQUIRED JSON
+=========================================================
+
 {
   "garment_type": "",
   "dominant_color": "",
@@ -1275,7 +1554,9 @@ Required JSON:
   "visual_fingerprint": ""
 }
 `,
+
           max_tokens: 800,
+
           temperature: 0,
 
           response_format: {
@@ -1373,7 +1654,7 @@ Required JSON:
               ],
             },
           },
-        }
+        },
       );
 
       console.log(
@@ -1387,65 +1668,94 @@ Required JSON:
         "";
 
       if (typeof raw !== "string") {
-        raw = JSON.stringify(raw || "");
+        raw = JSON.stringify(raw);
       }
-
-      raw = cleanText(raw);
 
       console.log(
-        "RAW VISION:",
-        raw
-      );
-
-      // =========================================================
-      // REMOVE CODE FENCES
-      // =========================================================
-
-      raw = raw
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-
-      let parsed = null;
-
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        const start = raw.indexOf("{");
-        const end = raw.lastIndexOf("}");
-
-        if (start !== -1 && end > start) {
-          try {
-            parsed = JSON.parse(
-              raw.slice(start, end + 1)
-            );
-          } catch {
-            parsed = null;
-          }
-        }
-      }
-
-      if (
-  !parsed ||
-  typeof parsed !== "object"
-) {
-  console.warn(
-    "VISION RESPONSE WAS NOT JSON — USING PROSE FALLBACK"
-  );
-
-  return normalizeFingerprint(
-    {
-      visual_fingerprint: raw,
-    },
-    raw
-  );
-}
-
-return normalizeFingerprint(
-  parsed,
+  "RAW VISION:",
   raw
 );
+
+
+let parsed;
+
+try {
+
+  parsed = JSON.parse(raw);
+
+} catch (e) {
+
+  console.log(
+    "JSON PARSE FAILED:",
+    e.message
+  );
+
+  parsed = {
+    visual_fingerprint: raw
+  };
+
+}
+
+
+const normalized =
+  normalizeFingerprint(
+    parsed,
+    raw
+  );
+
+
+console.log(
+  "NORMALIZED CUSTOMER FINGERPRINT:",
+  JSON.stringify(
+    normalized,
+    null,
+    2
+  )
+);
+
+
+return normalized;
+
+
+let parsed;
+
+try {
+
+  parsed = JSON.parse(raw);
+
+} catch(e) {
+
+  console.log(
+    "JSON PARSE FAILED:",
+    e.message
+  );
+
+  parsed = {
+    visual_fingerprint: raw
+  };
+
+}
+
+
+const normalized =
+  normalizeFingerprint(
+    parsed,
+    raw
+  );
+
+
+console.log(
+  "NORMALIZED CUSTOMER FINGERPRINT:",
+  JSON.stringify(
+    normalized,
+    null,
+    2
+  )
+);
+
+
+return normalized;
+
     }
 
     // =========================================================
@@ -1557,7 +1867,32 @@ console.log(
     }
   }
 
+// =========================================================
+// GARMENT TYPE ALIAS NORMALIZATION
+// =========================================================
+
+const garmentTypeLower =
+  cleanText(garmentType).toLowerCase();
+
+if (
+  garmentTypeLower.includes("salwar kameez") ||
+  garmentTypeLower.includes("salwar suit") ||
+  garmentTypeLower.includes("three-piece salwar") ||
+  garmentTypeLower.includes("three piece salwar") ||
+  garmentTypeLower === "three-piece suit" ||
+  garmentTypeLower === "three piece suit" ||
+  garmentTypeLower === "three-piece dress" ||
+  garmentTypeLower === "three piece dress" ||
+  garmentTypeLower === "pakistani three-piece suit"
+) {
+  garmentType = "Salwar Kameez";
+}
+
   // =========================================================
+  // DOMINANT COLOR
+  // =========================================================
+
+    // =========================================================
   // DOMINANT COLOR
   // =========================================================
 
@@ -1566,6 +1901,54 @@ console.log(
       m.dominant_color ||
       m.color
     );
+
+  // ---------------------------------------------------------
+  // PROSE DOMINANT COLOR HAS PRIORITY
+  // ---------------------------------------------------------
+
+  if (prose) {
+    const colors = [
+      "orange",
+      "red",
+      "pink",
+      "purple",
+      "blue",
+      "teal",
+      "green",
+      "yellow",
+      "gold",
+      "white",
+      "black",
+      "brown",
+      "beige",
+      "cream",
+      "gray"
+    ];
+
+    for (const color of colors) {
+      if (
+        prose.includes(
+          `dominant color of the garment is ${color}`
+        ) ||
+        prose.includes(
+          `dominant color is ${color}`
+        ) ||
+        prose.includes(
+          `dominant color of the garment ${color}`
+        ) ||
+        prose.includes(
+          `color of the garment is ${color}`
+        )
+      ) {
+        dominantColor = color;
+        break;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------
+  // FALLBACK COLOR RECOVERY
+  // ---------------------------------------------------------
 
   if (
     !dominantColor ||
@@ -1587,41 +1970,16 @@ console.log(
       "brown",
       "beige",
       "cream",
-      "gray",
+      "gray"
     ];
 
     for (const color of colors) {
       if (
-        prose.includes(
-          `dominant color of the garment is ${color}`
-        ) ||
-        prose.includes(
-          `dominant color is ${color}`
-        ) ||
-        prose.includes(
-          `dominant color of the garment ${color}`
-        ) ||
-        prose.includes(
-          `garment is ${color}`
-        ) ||
-        prose.includes(
-          `garment is a ${color}`
-        ) ||
-        prose.includes(
-          `garment is an ${color}`
-        ) ||
-        prose.includes(
-          `color scheme ${color}`
-        ) ||
-        prose.includes(
-          `${color} color scheme`
-        ) ||
-        prose.includes(
-          `${color}-colored`
-        ) ||
-        prose.includes(
-          `color of the garment is ${color}`
-        )
+        prose.includes(`${color} color scheme`) ||
+        prose.includes(`${color}-colored`) ||
+        prose.includes(`garment is ${color}`) ||
+        prose.includes(`garment is a ${color}`) ||
+        prose.includes(`garment is an ${color}`)
       ) {
         dominantColor = color;
         break;
@@ -2071,280 +2429,345 @@ console.log(
     // STRICT EXACT VERIFICATION
     // =========================================================
 
-    function verifyExact(
-      customer,
-      metadata
-    ) {
-      const candidate =
-        candidateFingerprint(
-          metadata
-        );
+    function normalizeGarmentType(value) {
+  const lower = cleanText(value).toLowerCase();
 
-      // -------------------------------------------------------
-      // COLOR MUST MATCH
-      // -------------------------------------------------------
+  if (
+    lower === "three-piece suit" ||
+    lower === "three piece suit" ||
+    lower === "three-piece dress" ||
+    lower === "three piece dress" ||
+    lower === "pakistani three-piece suit"
+  ) {
+    return "Salwar Kameez";
+  }
 
-      const customerColor =
-        normalizeColor(
-          customer.dominant_color
-        );
+  if (
+    lower === "salwar suit" ||
+    lower === "salwar kameez suit"
+  ) {
+    return "Salwar Kameez";
+  }
 
-      const candidateColor =
-        normalizeColor(
-          candidate.dominant_color
-        );
+  return cleanText(value);
+}
 
-      if (
-        !customerColor ||
-        !candidateColor ||
-        customerColor !== candidateColor
-      ) {
-        return {
-          exact: false,
-          score: 0,
-          reason: "COLOR_MISMATCH",
-          candidate,
-        };
-      }
+  function verifyExact(customer, metadata) {
 
-      // -------------------------------------------------------
-      // GARMENT TYPE MUST MATCH
-      // -------------------------------------------------------
+  const candidate = candidateFingerprint(metadata);
 
-      const garmentSimilarity =
-        similarity(
-          customer.garment_type,
-          candidate.garment_type
-        );
+  // =========================================================
+  // GARMENT TYPE NORMALIZATION
+  // =========================================================
 
-      if (
-        garmentSimilarity < 0.85
-      ) {
-        return {
-          exact: false,
-          score: 0,
-          reason:
-            "GARMENT_TYPE_MISMATCH",
-          candidate,
-        };
-      }
+  function normalizeGarmentTypeValue(value) {
 
-      // -------------------------------------------------------
-      // FIELD CHECKS
-      // -------------------------------------------------------
+  const type =
+    cleanText(value)
+      .toLowerCase()
+      .trim()
+      .replace(/[–—]/g, "-")
+      .replace(/\s+/g, " ");
 
-      const checks = [
-        ["garment_type", 0.18],
-        ["pattern", 0.18],
-        ["embroidery", 0.15],
-        ["neckline", 0.08],
-        ["sleeves", 0.08],
-        ["cuffs", 0.05],
-        ["fit", 0.04],
-        ["length", 0.04],
-        ["hem", 0.03],
-        ["border", 0.06],
-        ["dupatta_or_orna", 0.05],
-        ["fabric_appearance", 0.02],
-        ["distinctive_details", 0.04],
-      ];
+  if (
+    type.includes("three-piece suit") ||
+    type.includes("three piece suit") ||
+    type.includes("three-piece dress") ||
+    type.includes("three piece dress") ||
+    type.includes("salwar suit") ||
+    type.includes("salwar kameez") ||
+    type.includes("three piece salwar")
+  ) {
+    return "Salwar Kameez";
+  }
 
-      let total = 0;
-      let weight = 0;
+  return cleanText(value);
+}
 
-      const fieldScores = {};
 
-      for (
-        const [field, weightValue]
-        of checks
-      ) {
-        const a =
-          customer[field];
+  customer.garment_type =
+    normalizeGarmentTypeValue(
+      customer.garment_type
+    );
 
-        const b =
-          candidate[field];
+  candidate.garment_type =
+    normalizeGarmentTypeValue(
+      candidate.garment_type
+    );
 
-        if (!a || !b) {
-          fieldScores[field] = 0;
-          continue;
-        }
 
-        const fieldScore =
-          similarity(a, b);
+  console.log(
+    "GARMENT TYPE NORMALIZATION:",
+    JSON.stringify({
+      customer: customer.garment_type,
+      candidate: candidate.garment_type,
+      rawCandidate:
+        metadata.garment_type || ""
+    })
+  );
 
-        fieldScores[field] =
-          Number(
-            fieldScore.toFixed(4)
-          );
 
-        total +=
-          fieldScore *
-          weightValue;
+  // =========================================================
+  // NORMALIZE COLORS
+  // =========================================================
 
-        weight +=
-          weightValue;
-      }
+  const customerColor =
+    normalizeColor(
+      customer.dominant_color
+    );
 
-      const score =
-        weight > 0
-          ? total / weight
-          : 0;
 
-      // -------------------------------------------------------
-      // DISTINCTIVE DETAILS CHECK
-      // -------------------------------------------------------
+  // =========================================================
+  // SMART CANDIDATE COLOR
+  // =========================================================
 
-      const distinctiveScore =
-        similarity(
-          customer.distinctive_details,
-          candidate.distinctive_details
-        );
+  let candidateColorSource =
+    candidate.dominant_color;
 
-      // -------------------------------------------------------
-      // PATTERN CHECK
-      // -------------------------------------------------------
 
-      const patternScore =
-        similarity(
-          customer.pattern,
-          candidate.pattern
-        );
+  if (
+    !candidateColorSource ||
+    normalizeText(candidateColorSource) === "single" ||
+    normalizeText(candidateColorSource) === "single colour" ||
+    normalizeText(candidateColorSource) === "single color"
+  ) {
+    candidateColorSource = "";
+  }
 
-      // -------------------------------------------------------
-      // EMBROIDERY CHECK
-      // -------------------------------------------------------
 
-      const embroideryScore =
-        similarity(
-          customer.embroidery,
-          candidate.embroidery
-        );
+  // =========================================================
+  // EXTRACT COLOR FROM VISUAL FINGERPRINT
+  // =========================================================
 
-            // -------------------------------------------------------
-      // FINAL EXACT MATCH RULE
-      // -------------------------------------------------------
-      //
-      // Vector similarity is the strongest visual signal.
-      // Fingerprint fields are used as supporting evidence.
-      //
-      // This avoids rejecting the real product just because
-      // the vision model described the same garment differently.
-      // -------------------------------------------------------
+  if (!candidateColorSource) {
 
-      const vectorScore =
-        Number(candidate.vectorScore || 0);
-
-      const strongFieldScores = [
-        fieldScores.garment_type || 0,
-        fieldScores.pattern || 0,
-        fieldScores.embroidery || 0,
-        fieldScores.neckline || 0,
-        fieldScores.sleeves || 0,
-        fieldScores.cuffs || 0,
-        fieldScores.fit || 0,
-        fieldScores.length || 0,
-        fieldScores.hem || 0,
-        fieldScores.border || 0,
-        fieldScores.dupatta_or_orna || 0,
-        fieldScores.fabric_appearance || 0,
-        fieldScores.distinctive_details || 0,
-      ];
-
-      const supportingFields =
-        strongFieldScores.filter(
-          (value) => value >= 0.50
-        ).length;
-
-      // -------------------------------------------------------
-      // PRIMARY EXACT RULE
-      // -------------------------------------------------------
-      //
-      // Very strong vector match + exact color +
-      // exact garment type + at least 2 supporting fields.
-      //
-      // This is the main path for visually identical products.
-      //
-
-      const vectorExact =
-        vectorScore >= 0.90 &&
-        customerColor &&
-        candidateColor &&
-        customerColor === candidateColor &&
-        garmentSimilarity >= 0.85 &&
-        supportingFields >= 2;
-
-      // -------------------------------------------------------
-      // SECONDARY EXACT RULE
-      // -------------------------------------------------------
-      //
-      // If vector similarity is extremely high, allow a little
-      // more tolerance in the AI-generated fingerprint.
-      //
-
-      const highConfidenceVectorExact =
-        vectorScore >= 0.92 &&
-        customerColor &&
-        candidateColor &&
-        customerColor === candidateColor &&
-        garmentSimilarity >= 0.85 &&
-        (
-          patternScore >= 0.30 ||
-          embroideryScore >= 0.10 ||
-          distinctiveScore >= 0.20
-        );
-
-      const exact =
-        vectorExact ||
-        highConfidenceVectorExact;
-
-      console.log(
-        "EXACT DECISION:",
-        JSON.stringify({
-          vectorScore,
-          garmentSimilarity,
-          patternScore,
-          embroideryScore,
-          distinctiveScore,
-          supportingFields,
-          vectorExact,
-          highConfidenceVectorExact,
-          exact,
-        })
+    const prose =
+      normalizeText(
+        candidate.visual_fingerprint || ""
       );
 
-      return {
-        exact,
+    const colors = [
+      "orange",
+      "red",
+      "pink",
+      "purple",
+      "blue",
+      "teal",
+      "green",
+      "yellow",
+      "gold",
+      "white",
+      "black",
+      "brown",
+      "beige",
+      "gray",
+      "grey",
+      "cream",
+      "maroon",
+      "navy",
+      "olive",
+      "magenta",
+      "cyan"
+    ];
 
-        score,
+    for (const color of colors) {
 
-        reason: exact
-          ? "EXACT_PRODUCT_MATCH"
-          : "STRICT_FINGERPRINT_MISMATCH",
-
-        candidate,
-
-        field_scores:
-          fieldScores,
-
-        garment_similarity:
-          garmentSimilarity,
-
-        pattern_score:
-          patternScore,
-
-        embroidery_score:
-          embroideryScore,
-
-        distinctive_score:
-          distinctiveScore,
-
-        vector_score:
-          vectorScore,
-
-        supporting_fields:
-          supportingFields,
-      };
+      if (
+        prose.includes(`dominant color is ${color}`) ||
+        prose.includes(`dominant color: ${color}`) ||
+        prose.includes(`dominant color ${color}`) ||
+        prose.includes(`garment is ${color}`) ||
+        prose.includes(`garment in the image is a ${color}`) ||
+        prose.includes(`garment in the image is ${color}`) ||
+        prose.includes(`a ${color} salwar`) ||
+        prose.includes(`a ${color} saree`) ||
+        prose.includes(`a ${color} dress`) ||
+        prose.includes(`a ${color} three-piece`) ||
+        prose.includes(`the garment is ${color}`)
+      ) {
+        candidateColorSource = color;
+        break;
+      }
     }
+  }
+
+
+  const candidateColor =
+    normalizeColor(
+      candidateColorSource
+    );
+
+
+  console.log(
+    "COLOR CHECK:",
+    JSON.stringify({
+      customerColor,
+      candidateColor,
+      candidateColorSource,
+      metadataColor:
+        metadata.color || "",
+      metadataDominantColor:
+        metadata.dominant_color || ""
+    })
+  );
+
+
+  // =========================================================
+  // COLOR MUST MATCH
+  // =========================================================
+
+  let colorPenalty = 0;
+
+if (
+ customerColor &&
+ candidateColor &&
+ customerColor !== candidateColor
+) {
+  colorPenalty = 0.20;
+}
+
+
+  // =========================================================
+  // GARMENT TYPE CHECK
+  // =========================================================
+
+  const garmentTypeSimilarity =
+    similarity(
+      customer.garment_type,
+      candidate.garment_type
+    );
+
+
+  console.log(
+    "GARMENT TYPE CHECK:",
+    JSON.stringify({
+      customer: customer.garment_type,
+      candidate: candidate.garment_type,
+      similarity: garmentTypeSimilarity
+    })
+  );
+
+
+  if (
+    garmentTypeSimilarity < 0.70
+  ) {
+
+    return {
+      exact: false,
+      score: 0,
+      reason: "GARMENT_TYPE_MISMATCH",
+      candidate
+    };
+  }
+
+
+  // =========================================================
+  // FINGERPRINT SCORING
+  // =========================================================
+
+  const checks = [
+    ["garment_type", 0.18],
+    ["pattern", 0.18],
+    ["embroidery", 0.15],
+    ["neckline", 0.08],
+    ["sleeves", 0.08],
+    ["cuffs", 0.05],
+    ["fit", 0.04],
+    ["length", 0.04],
+    ["hem", 0.03],
+    ["border", 0.05],
+    ["dupatta_or_orna", 0.05],
+    ["fabric_appearance", 0.03],
+    ["distinctive_details", 0.04]
+  ];
+
+
+  let total = 0;
+  let weight = 0;
+
+
+  for (
+    const [field, fieldWeight]
+    of checks
+  ) {
+
+    const a =
+      cleanText(
+        customer[field]
+      );
+
+    const b =
+      cleanText(
+        candidate[field]
+      );
+
+
+    if (
+      !a ||
+      !b
+    ) {
+      continue;
+    }
+
+
+    const sim =
+      similarity(a, b);
+
+
+    console.log(
+      "FIELD CHECK:",
+      JSON.stringify({
+        field,
+        customer: a,
+        candidate: b,
+        similarity: sim,
+        weight: fieldWeight
+      })
+    );
+
+
+    total +=
+      sim * fieldWeight;
+
+    weight +=
+      fieldWeight;
+  }
+
+
+  const score =
+    weight > 0
+      ? total / weight
+      : 0;
+
+
+  console.log(
+    "FINAL FINGERPRINT SCORE:",
+    JSON.stringify({
+      score,
+      weight
+    })
+  );
+
+
+  // =========================================================
+  // EXACT DECISION
+  // =========================================================
+
+  const exact =
+    score >= 0.68 &&
+    garmentTypeSimilarity >= 0.70;
+
+
+  return {
+    exact,
+    score,
+    reason:
+      exact
+        ? "EXACT_MATCH"
+        : "FINGERPRINT_MISMATCH",
+    candidate
+  };
+}
 
     // =========================================================
     // ANALYZE TEST
@@ -3228,3 +3651,8 @@ console.log(
     );
   },
 };
+
+
+
+
+

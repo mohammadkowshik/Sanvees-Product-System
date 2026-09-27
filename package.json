@@ -13,6 +13,7 @@
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "@supabase/supabase-js": "^2.112.2",
+    "jsbarcode": "^3.12.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
