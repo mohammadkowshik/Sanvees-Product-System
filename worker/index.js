@@ -30,7 +30,387 @@
         message: "Sanvee AI Worker is working!",
       });
     }
+    // =========================================================
+// COURIER API SETTINGS
+// =========================================================
 
+// Allowed courier names
+const ALLOWED_COURIERS = [
+  "steadfast",
+  "pathao",
+  "redx",
+];
+
+// Get Supabase REST headers
+function getSupabaseHeaders(env) {
+  return {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+// Save encrypted courier credentials
+if (
+  url.pathname === "/api/courier/settings/save" &&
+  request.method === "POST"
+) {
+  try {
+    if (
+      !env.SUPABASE_URL ||
+      !env.SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Supabase configuration is missing.",
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    if (!env.COURIER_ENCRYPTION_KEY) {
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "COURIER_ENCRYPTION_KEY is not configured.",
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    const body = await request.json();
+
+    const courier = cleanText(
+      body?.courier
+    ).toLowerCase();
+
+    const credentials =
+      body?.credentials;
+
+    if (!ALLOWED_COURIERS.includes(courier)) {
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Invalid courier name.",
+        },
+        400,
+        corsHeaders
+      );
+    }
+
+    if (
+      !credentials ||
+      typeof credentials !== "object"
+    ) {
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Courier credentials are required.",
+        },
+        400,
+        corsHeaders
+      );
+    }
+
+    // Encrypt credentials before saving
+    const encryptedCredentials =
+      await encryptCourierCredentials(
+        credentials,
+        env
+      );
+
+    const response = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/courier_api_settings?on_conflict=courier`,
+      {
+        method: "POST",
+        headers: {
+          ...getSupabaseHeaders(env),
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify({
+          courier,
+          enabled: true,
+          credentials_encrypted:
+            encryptedCredentials,
+          connection_status:
+            "not_tested",
+          last_tested_at: null,
+          last_error: null,
+          updated_at:
+            new Date().toISOString(),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText =
+        await response.text();
+
+      console.error(
+        "Courier settings save error:",
+        errorText
+      );
+
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Courier settings save করা যায়নি.",
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    return courierJsonResponse(
+      {
+        success: true,
+        courier,
+        message:
+          "Courier API credentials securely saved.",
+      },
+      200,
+      corsHeaders
+    );
+  } catch (error) {
+    console.error(
+      "Courier settings save exception:",
+      error
+    );
+
+    return courierJsonResponse(
+      {
+        success: false,
+        message:
+          error?.message ||
+          "Courier settings save করার সময় সমস্যা হয়েছে.",
+      },
+      500,
+      corsHeaders
+    );
+  }
+}
+
+
+// =========================================================
+// LOAD COURIER API SETTINGS STATUS
+// =========================================================
+
+if (
+  url.pathname === "/api/courier/settings" &&
+  request.method === "GET"
+) {
+  try {
+    if (
+      !env.SUPABASE_URL ||
+      !env.SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Supabase configuration is missing.",
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    const response = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/courier_api_settings?select=courier,enabled,connection_status,last_tested_at,last_error,updated_at&order=courier.asc`,
+      {
+        method: "GET",
+        headers:
+          getSupabaseHeaders(env),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText =
+        await response.text();
+
+      console.error(
+        "Courier settings load error:",
+        errorText
+      );
+
+      return courierJsonResponse(
+        {
+          success: false,
+          message:
+            "Courier settings load করা যায়নি.",
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    const settings =
+      await response.json();
+
+    return courierJsonResponse(
+      {
+        success: true,
+        settings,
+      },
+      200,
+      corsHeaders
+    );
+  } catch (error) {
+    console.error(
+      "Courier settings load exception:",
+      error
+    );
+
+    return courierJsonResponse(
+      {
+        success: false,
+        message:
+          error?.message ||
+          "Courier settings load করার সময় সমস্যা হয়েছে.",
+      },
+      500,
+      corsHeaders
+    );
+  }
+}
+
+    // =========================================================
+// COURIER API SECURITY HELPERS
+// =========================================================
+
+function base64Encode(bytes) {
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return btoa(binary);
+}
+
+function base64Decode(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+}
+
+async function getCourierEncryptionKey(env) {
+  const secret = cleanText(env.COURIER_ENCRYPTION_KEY);
+
+  if (!secret) {
+    throw new Error(
+      "COURIER_ENCRYPTION_KEY is not configured."
+    );
+  }
+
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(secret)
+  );
+
+  return crypto.subtle.importKey(
+    "raw",
+    hash,
+    {
+      name: "AES-GCM",
+    },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function encryptCourierCredentials(
+  credentials,
+  env
+) {
+  const key = await getCourierEncryptionKey(env);
+
+  const iv = crypto.getRandomValues(
+    new Uint8Array(12)
+  );
+
+  const plaintext = new TextEncoder().encode(
+    JSON.stringify(credentials)
+  );
+
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv,
+    },
+    key,
+    plaintext
+  );
+
+  return JSON.stringify({
+    version: 1,
+    iv: base64Encode(iv),
+    data: base64Encode(
+      new Uint8Array(encrypted)
+    ),
+  });
+}
+
+async function decryptCourierCredentials(
+  encryptedValue,
+  env
+) {
+  const key = await getCourierEncryptionKey(env);
+
+  const stored =
+    typeof encryptedValue === "string"
+      ? JSON.parse(encryptedValue)
+      : encryptedValue;
+
+  const iv = base64Decode(stored.iv);
+  const encryptedData = base64Decode(
+    stored.data
+  );
+
+  const decrypted =
+    await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv,
+      },
+      key,
+      encryptedData
+    );
+
+  return JSON.parse(
+    new TextDecoder().decode(decrypted)
+  );
+}
+
+function courierJsonResponse(
+  data,
+  status = 200,
+  corsHeaders = {}
+) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      },
+    }
+  );
+}
     // =========================================================
     // HELPERS
     // =========================================================
