@@ -184,6 +184,33 @@ const [passwordHistoryLoading, setPasswordHistoryLoading] =
   const [showPriceRange, setShowPriceRange] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   // =====================================================
+// ORDER REPORTS STATES
+// =====================================================
+
+const [reportFromDate, setReportFromDate] = useState("");
+const [reportToDate, setReportToDate] = useState("");
+
+const [reportRoleFilter, setReportRoleFilter] =
+  useState("all");
+
+const [reportUserFilter, setReportUserFilter] =
+  useState("all");
+
+const [reportLoading, setReportLoading] =
+  useState(false);
+
+const [reportGenerated, setReportGenerated] =
+  useState(false);
+
+const [reportOrders, setReportOrders] =
+  useState([]);
+
+const [reportUsers, setReportUsers] =
+  useState([]);
+
+const [reportSummary, setReportSummary] =
+  useState(null);
+  // =====================================================
 // ORDER HISTORY STATES
 // =====================================================
 
@@ -386,6 +413,164 @@ const [customerName, setCustomerName] =
 // =====================================================
 
 const [orders, setOrders] = useState([]);
+const [individualReportUserId, setIndividualReportUserId] = useState("");
+const [individualReportUserName, setIndividualReportUserName] = useState("");
+
+const individualReportData = useMemo(() => {
+  if (!individualReportUserId) {
+    return {
+      userId: "",
+      userName: "",
+      orders: [],
+      totalOrders: 0,
+      totalAmount: 0,
+      pendingCount: 0,
+      pendingAmount: 0,
+      packagingCount: 0,
+      packagingAmount: 0,
+      shippedCount: 0,
+      shippedAmount: 0,
+      cancelledCount: 0,
+      cancelledAmount: 0,
+    };
+  }
+
+  const userOrders = orders.filter((order) => {
+    // USER FILTER
+    const sameUser =
+      String(order.created_by || "") ===
+      String(individualReportUserId);
+
+    if (!sameUser) {
+      return false;
+    }
+
+    // DATE FILTER
+    if (reportFromDate) {
+      const orderDate = new Date(
+        order.created_at
+      );
+
+      const fromDate = new Date(
+        `${reportFromDate}T00:00:00`
+      );
+
+      if (orderDate < fromDate) {
+        return false;
+      }
+    }
+
+    if (reportToDate) {
+      const orderDate = new Date(
+        order.created_at
+      );
+
+      const toDate = new Date(
+        `${reportToDate}T23:59:59.999`
+      );
+
+      if (orderDate > toDate) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const getReportStatus = (order) =>
+    String(order.status || "")
+      .trim()
+      .toLowerCase();
+
+  const getReportAmount = (order) =>
+    Number(order.total_amount || 0);
+
+  const pendingOrders = userOrders.filter(
+    (order) =>
+      getReportStatus(order) === "pending"
+  );
+
+  const packagingOrders = userOrders.filter(
+    (order) =>
+      getReportStatus(order) === "packaging"
+  );
+
+  const shippedOrders = userOrders.filter(
+    (order) =>
+      getReportStatus(order) === "shipped"
+  );
+
+  const cancelledOrders = userOrders.filter(
+    (order) =>
+      getReportStatus(order) === "cancelled"
+  );
+
+  return {
+    userId: individualReportUserId,
+
+    userName:
+      individualReportUserName ||
+      "Selected User",
+
+    orders: userOrders,
+
+    totalOrders:
+      userOrders.length,
+
+    totalAmount:
+      userOrders.reduce(
+        (sum, order) =>
+          sum + getReportAmount(order),
+        0
+      ),
+
+    pendingCount:
+      pendingOrders.length,
+
+    pendingAmount:
+      pendingOrders.reduce(
+        (sum, order) =>
+          sum + getReportAmount(order),
+        0
+      ),
+
+    packagingCount:
+      packagingOrders.length,
+
+    packagingAmount:
+      packagingOrders.reduce(
+        (sum, order) =>
+          sum + getReportAmount(order),
+        0
+      ),
+
+    shippedCount:
+      shippedOrders.length,
+
+    shippedAmount:
+      shippedOrders.reduce(
+        (sum, order) =>
+          sum + getReportAmount(order),
+        0
+      ),
+
+    cancelledCount:
+      cancelledOrders.length,
+
+    cancelledAmount:
+      cancelledOrders.reduce(
+        (sum, order) =>
+          sum + getReportAmount(order),
+        0
+      ),
+  };
+}, [
+  orders,
+  individualReportUserId,
+  individualReportUserName,
+  reportFromDate,
+  reportToDate,
+]);
 const [dashboardNow, setDashboardNow] = useState(
   () => new Date()
 );
@@ -476,6 +661,19 @@ const latestTrackingUpdate =
 
 const [activeCourier, setActiveCourier] =
   useState("all");
+  const [courierApiModalOpen, setCourierApiModalOpen] =
+  useState(false);
+
+const [selectedApiCourier, setSelectedApiCourier] =
+  useState("");
+
+const [courierApiCredentials, setCourierApiCredentials] =
+  useState({
+    apiKey: "",
+    secretKey: "",
+    clientId: "",
+    clientSecret: "",
+  });
 // =====================================================
 // SELECTED ORDER DETAILS
 // =====================================================
@@ -1175,6 +1373,965 @@ const loadOrders = async () => {
   } finally {
     setOrdersLoading(false);
   }
+};
+// =====================================================
+// GENERATE ORDER REPORT
+// =====================================================
+
+const printIndividualReport = (printType) => {
+  if (!individualReportUserId) {
+    alert("Please select a user first.");
+    return;
+  }
+
+  if (
+    reportFromDate &&
+    reportToDate &&
+    reportFromDate > reportToDate
+  ) {
+    alert(
+      "From Date cannot be later than To Date."
+    );
+    return;
+  }
+
+  const report = individualReportData;
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const formatMoney = (value) =>
+    `৳${Number(value || 0).toLocaleString(
+      "en-BD"
+    )}`;
+
+  const formatDate = (value) =>
+    value
+      ? new Date(value).toLocaleDateString(
+          "en-BD"
+        )
+      : "-";
+
+  const reportHtml = `
+    <section class="report-section">
+      <h2>👤 Individual Report</h2>
+
+      <div class="selected-user">
+        <strong>User:</strong>
+        ${escapeHtml(
+          report.userName || "Selected User"
+        )}
+      </div>
+
+      ${
+        reportFromDate || reportToDate
+          ? `
+            <div class="date-range">
+              <strong>Date Range:</strong>
+              ${escapeHtml(
+                reportFromDate || "All"
+              )}
+              &nbsp; to &nbsp;
+              ${escapeHtml(
+                reportToDate || "All"
+              )}
+            </div>
+          `
+          : ""
+      }
+
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Order Count</th>
+            <th>Total Amount</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr>
+            <td>Total Orders Created</td>
+            <td>${report.totalOrders}</td>
+            <td>${formatMoney(
+              report.totalAmount
+            )}</td>
+          </tr>
+
+          <tr>
+            <td>Pending</td>
+            <td>${report.pendingCount}</td>
+            <td>${formatMoney(
+              report.pendingAmount
+            )}</td>
+          </tr>
+
+          <tr>
+            <td>Packaging</td>
+            <td>${report.packagingCount}</td>
+            <td>${formatMoney(
+              report.packagingAmount
+            )}</td>
+          </tr>
+
+          <tr>
+            <td>Shipped</td>
+            <td>${report.shippedCount}</td>
+            <td>${formatMoney(
+              report.shippedAmount
+            )}</td>
+          </tr>
+
+          <tr>
+            <td>Cancelled</td>
+            <td>${report.cancelledCount}</td>
+            <td>${formatMoney(
+              report.cancelledAmount
+            )}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  `;
+
+  const orderListHtml = `
+    <section class="order-list-section">
+      <h2>🧾 Individual Order List</h2>
+
+      ${
+        report.orders.length === 0
+          ? `
+            <p class="no-orders">
+              No orders found for the selected
+              user and date range.
+            </p>
+          `
+          : `
+            <table class="orders-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Phone</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${report.orders
+                  .map(
+                    (order) => `
+                      <tr>
+                        <td>
+                          ${escapeHtml(
+                            order.order_number ||
+                              order.id ||
+                              "-"
+                          )}
+                        </td>
+
+                        <td>
+                          ${escapeHtml(
+                            order.customer_name ||
+                              "-"
+                          )}
+                        </td>
+
+                        <td>
+                          ${escapeHtml(
+                            order.customer_phone ||
+                              "-"
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatDate(
+                            order.created_at
+                          )}
+                        </td>
+
+                        <td>
+                          ${escapeHtml(
+                            order.status ||
+                              "-"
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatMoney(
+                            order.total_amount
+                          )}
+                        </td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          `
+      }
+    </section>
+  `;
+
+  let bodyContent = "";
+
+  if (printType === "report") {
+    bodyContent = reportHtml;
+  }
+
+  if (printType === "orders") {
+    bodyContent = orderListHtml;
+  }
+
+  if (printType === "both") {
+    bodyContent =
+      reportHtml + orderListHtml;
+  }
+
+  const printWindow = window.open(
+    "",
+    "_blank",
+    "width=1200,height=800"
+  );
+
+  if (!printWindow) {
+    alert(
+      "Print window was blocked. Please allow pop-ups for this site."
+    );
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Individual Report</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+
+            margin: 30px;
+            color: #111827;
+            background: #ffffff;
+          }
+
+          h1,
+          h2,
+          h3 {
+            margin-top: 0;
+          }
+
+          h2 {
+            margin-bottom: 12px;
+          }
+
+          .selected-user,
+          .date-range {
+            margin-bottom: 8px;
+            font-size: 14px;
+          }
+
+          .report-section {
+            margin-bottom: 30px;
+          }
+
+          .order-list-section {
+            margin-top: 30px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+          }
+
+          th,
+          td {
+            border: 1px solid #d1d5db;
+            padding: 9px;
+            font-size: 13px;
+          }
+
+          th {
+            background: #f3f4f6;
+            font-weight: 700;
+          }
+
+          td:nth-child(2),
+          td:nth-child(3),
+          .summary-table th:nth-child(2),
+          .summary-table th:nth-child(3) {
+            text-align: right;
+          }
+
+          .no-orders {
+            padding: 15px;
+            border: 1px solid #d1d5db;
+            background: #f8fafc;
+          }
+
+          @media print {
+            body {
+              margin: 15mm;
+            }
+
+            .order-list-section {
+              break-inside: auto;
+            }
+
+            tr {
+              break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${bodyContent}
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+
+  printWindow.focus();
+
+  setTimeout(() => {
+    printWindow.print();
+  }, 300);
+};
+const generateOrderReport = async () => {
+  if (!canManageUsers) {
+    alert("আপনার Report দেখার permission নেই।");
+    return;
+  }
+
+  if (!reportFromDate || !reportToDate) {
+    alert("From Date এবং To Date নির্বাচন করুন।");
+    return;
+  }
+
+  if (reportFromDate > reportToDate) {
+    alert("From Date, To Date-এর পরে হতে পারবে না।");
+    return;
+  }
+
+  try {
+    setReportLoading(true);
+    setReportGenerated(false);
+
+    // To Date-এর পুরো দিন পর্যন্ত নেওয়ার জন্য
+    const fromDateTime =
+      `${reportFromDate}T00:00:00`;
+
+    const toDateObj = new Date(
+      `${reportToDate}T00:00:00`
+    );
+
+    toDateObj.setDate(
+      toDateObj.getDate() + 1
+    );
+
+    const toDateTime =
+      toDateObj.toISOString();
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("orders")
+      .select("*")
+      .gte("created_at", fromDateTime)
+      .lt("created_at", toDateTime)
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (error) {
+      console.error(
+        "Generate report error:",
+        error
+      );
+
+      alert(
+        error.message ||
+          "Report তৈরি করা যায়নি।"
+      );
+
+      return;
+    }
+
+    let filteredOrders = data || [];
+
+    // =================================================
+    // ROLE FILTER
+    // =================================================
+
+    if (reportRoleFilter !== "all") {
+      filteredOrders =
+        filteredOrders.filter(
+          (order) =>
+            String(
+              order.created_by_role || ""
+            ).toLowerCase() ===
+            reportRoleFilter.toLowerCase()
+        );
+    }
+
+    // =================================================
+    // USER FILTER
+    // =================================================
+
+    if (reportUserFilter !== "all") {
+      filteredOrders =
+        filteredOrders.filter(
+          (order) =>
+            String(order.created_by || "") ===
+            String(reportUserFilter)
+        );
+    }
+
+    // =================================================
+    // CALCULATE SUMMARY
+    // =================================================
+
+    const getAmount = (order) => {
+      const amount = Number(
+        order.total_amount || 0
+      );
+
+      return Number.isFinite(amount)
+        ? amount
+        : 0;
+    };
+
+    const statusOrders = (
+      status
+    ) =>
+      filteredOrders.filter(
+        (order) =>
+          String(
+            order.status || ""
+          ).toLowerCase() === status
+      );
+
+    const calculateStatus = (status) => {
+      const list =
+        statusOrders(status);
+
+      return {
+        count: list.length,
+        amount: list.reduce(
+          (sum, order) =>
+            sum + getAmount(order),
+          0
+        ),
+      };
+    };
+
+    const totalAmount =
+      filteredOrders.reduce(
+        (sum, order) =>
+          sum + getAmount(order),
+        0
+      );
+
+    const pending =
+      calculateStatus("pending");
+
+    const packaging =
+      calculateStatus("packaging");
+
+    const shipped =
+      calculateStatus("shipped");
+
+    const cancelled =
+      calculateStatus("cancelled");
+
+    const summary = {
+      total: {
+        count: filteredOrders.length,
+        amount: totalAmount,
+      },
+
+      pending,
+
+      packaging,
+
+      shipped,
+
+      cancelled,
+    };
+
+    setReportOrders(
+      filteredOrders
+    );
+
+    setReportSummary(summary);
+    setReportGenerated(true);
+
+  } catch (error) {
+    console.error(
+      "Generate report unexpected error:",
+      error
+    );
+
+    alert(
+      "Report তৈরি করার সময় সমস্যা হয়েছে।"
+    );
+
+  } finally {
+    setReportLoading(false);
+  }
+};
+// =================================================
+// PRINT ORDER REPORT
+// =================================================
+
+const printOrderReport = () => {
+  if (!reportGenerated || !reportSummary) {
+    alert("আগে Generate Report করুন।");
+    return;
+  }
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const formatMoney = (value) =>
+    `৳${Number(value || 0).toLocaleString("en-BD")}`;
+
+  const formatDate = (value) =>
+    value
+      ? new Date(value).toLocaleDateString("en-BD")
+      : "-";
+
+  // =================================================
+  // USER-WISE DATA
+  // =================================================
+
+  const userMap = {};
+
+  reportOrders.forEach((order) => {
+    const userId =
+      order.created_by ||
+      order.created_by_name ||
+      "unknown";
+
+    const userName =
+      order.created_by_name ||
+      "Unknown User";
+
+    const userRole =
+      order.created_by_role ||
+      "Unknown";
+
+    const key = String(userId);
+
+    if (!userMap[key]) {
+      userMap[key] = {
+        id: userId,
+        name: userName,
+        role: userRole,
+        orders: 0,
+        amount: 0,
+        cancelled: 0,
+        cancelledAmount: 0,
+        shipped: 0,
+        shippedAmount: 0,
+      };
+    }
+
+    const amount =
+      Number(order.total_amount || 0);
+
+    userMap[key].orders += 1;
+    userMap[key].amount += amount;
+
+    const status =
+      String(order.status || "")
+        .trim()
+        .toLowerCase();
+
+    if (status === "cancelled") {
+      userMap[key].cancelled += 1;
+      userMap[key].cancelledAmount += amount;
+    }
+
+    if (status === "shipped") {
+      userMap[key].shipped += 1;
+      userMap[key].shippedAmount += amount;
+    }
+  });
+
+  const userWiseRows =
+    Object.values(userMap)
+      .sort(
+        (a, b) =>
+          b.orders - a.orders
+      )
+      .map(
+        (user) => `
+          <tr>
+            <td>${escapeHtml(user.name)}</td>
+            <td>${escapeHtml(user.role)}</td>
+            <td class="number">
+              ${user.orders}
+            </td>
+            <td class="number">
+              ${formatMoney(user.amount)}
+            </td>
+            <td class="number">
+              ${user.cancelled}
+            </td>
+            <td class="number">
+              ${formatMoney(user.cancelledAmount)}
+            </td>
+            <td class="number">
+              ${user.shipped}
+            </td>
+            <td class="number">
+              ${formatMoney(user.shippedAmount)}
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+
+  // =================================================
+  // REPORT SUMMARY
+  // =================================================
+
+  const reportSummaryHtml = `
+    <section class="report-section">
+
+      <h2>Report Summary</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Order Count</th>
+            <th>Total Amount</th>
+          </tr>
+        </thead>
+
+        <tbody>
+
+          <tr>
+            <td><strong>Total Orders Created</strong></td>
+            <td class="number">
+              ${reportSummary.total.count}
+            </td>
+            <td class="number">
+              ${formatMoney(
+                reportSummary.total.amount
+              )}
+            </td>
+          </tr>
+
+          <tr>
+            <td>Pending</td>
+            <td class="number">
+              ${reportSummary.pending.count}
+            </td>
+            <td class="number">
+              ${formatMoney(
+                reportSummary.pending.amount
+              )}
+            </td>
+          </tr>
+
+          <tr>
+            <td>Packaging</td>
+            <td class="number">
+              ${reportSummary.packaging.count}
+            </td>
+            <td class="number">
+              ${formatMoney(
+                reportSummary.packaging.amount
+              )}
+            </td>
+          </tr>
+
+          <tr>
+            <td>Shipped</td>
+            <td class="number">
+              ${reportSummary.shipped.count}
+            </td>
+            <td class="number">
+              ${formatMoney(
+                reportSummary.shipped.amount
+              )}
+            </td>
+          </tr>
+
+          <tr>
+            <td>Cancelled</td>
+            <td class="number">
+              ${reportSummary.cancelled.count}
+            </td>
+            <td class="number">
+              ${formatMoney(
+                reportSummary.cancelled.amount
+              )}
+            </td>
+          </tr>
+
+        </tbody>
+      </table>
+
+    </section>
+  `;
+
+  // =================================================
+  // USER-WISE PERFORMANCE
+  // =================================================
+
+  const userWiseHtml =
+    reportOrders.length > 0
+      ? `
+        <section class="report-section">
+
+          <h2>👥 User-wise Performance</h2>
+
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Orders</th>
+                <th>Total Amount</th>
+                <th>Cancelled</th>
+                <th>Cancel Amount</th>
+                <th>Shipped</th>
+                <th>Shipped Amount</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${userWiseRows}
+            </tbody>
+          </table>
+
+        </section>
+      `
+      : "";
+
+  // =================================================
+  // PRINT WINDOW
+  // =================================================
+
+  const printWindow = window.open(
+    "",
+    "_blank",
+    "width=1200,height=800"
+  );
+
+  if (!printWindow) {
+    alert(
+      "Print window was blocked. Please allow pop-ups for this site."
+    );
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+
+    <html>
+
+      <head>
+
+        <title>Order Report</title>
+
+        <style>
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+
+            margin: 30px;
+            color: #111827;
+            background: #ffffff;
+          }
+
+          .header {
+            text-align: center;
+            margin-bottom: 28px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #d1d5db;
+          }
+
+          .brand {
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            line-height: 1.1;
+          }
+
+          .brand-subtitle {
+            margin-top: 4px;
+            font-size: 14px;
+            font-weight: 600;
+          }
+
+          .date-info {
+            margin-bottom: 22px;
+            font-size: 14px;
+          }
+
+          .report-section {
+            margin-bottom: 30px;
+          }
+
+          h2 {
+            margin: 0 0 14px 0;
+            font-size: 20px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+          }
+
+          th,
+          td {
+            border: 1px solid #d1d5db;
+            padding: 9px;
+            font-size: 13px;
+          }
+
+          th {
+            background: #f3f4f6;
+            font-weight: 700;
+            text-align: left;
+          }
+
+          .number {
+            text-align: right;
+          }
+
+          tr {
+            break-inside: avoid;
+          }
+
+          @media print {
+
+            body {
+              margin: 15mm;
+            }
+
+            .report-section {
+              break-inside: auto;
+            }
+
+          }
+
+        </style>
+
+      </head>
+
+      <body>
+
+        <div class="header">
+
+          <div class="brand">
+            SANVEE'S
+          </div>
+
+          <div class="brand-subtitle">
+            by Tony
+          </div>
+
+        </div>
+
+        <div class="date-info">
+
+          <strong>Date Range:</strong>
+          ${escapeHtml(
+            reportFromDate || "All"
+          )}
+
+          &nbsp; to &nbsp;
+
+          ${escapeHtml(
+            reportToDate || "All"
+          )}
+
+          <br />
+
+          <strong>Role:</strong>
+          ${escapeHtml(
+            reportRoleFilter === "all"
+              ? "All"
+              : reportRoleFilter
+          )}
+
+          &nbsp;&nbsp;
+
+          <strong>User:</strong>
+          ${escapeHtml(
+            reportUserFilter === "all"
+              ? "All"
+              : (
+                  users.find(
+                    (user) =>
+                      String(user.id) ===
+                      String(reportUserFilter)
+                  )?.full_name ||
+                  users.find(
+                    (user) =>
+                      String(user.id) ===
+                      String(reportUserFilter)
+                  )?.email ||
+                  reportUserFilter
+                )
+          )}
+
+        </div>
+
+        ${reportSummaryHtml}
+
+        ${userWiseHtml}
+
+      </body>
+
+    </html>
+  `);
+
+  printWindow.document.close();
+
+  printWindow.focus();
+
+  setTimeout(() => {
+    printWindow.print();
+  }, 300);
 };
 // =====================================================
 // SEARCH CUSTOMER ORDER
@@ -3047,9 +4204,17 @@ const orderIsLocked =
 useEffect(() => {
   if (
     activeMenu === "dashboard" ||
-    activeMenu === "orders"
+    activeMenu === "orders" ||
+    activeMenu === "reports"
   ) {
     loadOrders();
+  }
+
+  if (
+    activeMenu === "reports" &&
+    canManageUsers
+  ) {
+    loadUsers();
   }
 }, [activeMenu]);
 // =====================================================
@@ -8367,6 +9532,37 @@ const getSelectedColorData = (item) => {
   🚚 Courier Panel
 </button>
 )}
+{/* =====================================================
+    COURIER API SETTINGS
+===================================================== */}
+
+{canManageUsers && (
+  <button
+    onClick={() => {
+      setActiveMenu("courier-api-settings");
+      setActiveOrderPage("");
+      setAllProductsActive(false);
+    }}
+    style={{
+      width: "100%",
+      padding: "13px 15px",
+      marginBottom: "8px",
+      border: "none",
+      borderRadius: "8px",
+      textAlign: "left",
+      cursor: "pointer",
+      color: "#fff",
+      background:
+        activeMenu === "courier-api-settings"
+          ? "#2563eb"
+          : "transparent",
+      fontSize: "15px",
+      fontWeight: "600",
+    }}
+  >
+    ⚙️ Courier API Settings
+  </button>
+)}
 {/* PRODUCT HISTORY */}
 
 {canManageProducts && (
@@ -8397,7 +9593,79 @@ const getSelectedColorData = (item) => {
   🕒 Product History
 </button>
 )}
+{/* =====================================================
+    ORDER REPORTS
+===================================================== */}
 
+{canManageUsers && (
+  <button
+    onClick={() => {
+      setActiveMenu("reports");
+      setActiveOrderPage("");
+      setAllProductsActive(false);
+
+      setReportGenerated(false);
+      setReportOrders([]);
+      setReportSummary(null);
+
+      // Default: current month
+      const now = new Date();
+
+      const firstDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1
+      );
+
+      const lastDay = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0
+      );
+
+      const formatDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(
+          date.getMonth() + 1
+        ).padStart(2, "0");
+        const day = String(
+          date.getDate()
+        ).padStart(2, "0");
+
+        return `${year}-${month}-${day}`;
+      };
+
+      setReportFromDate(
+        formatDate(firstDay)
+      );
+
+      setReportToDate(
+        formatDate(lastDay)
+      );
+
+      setReportRoleFilter("all");
+      setReportUserFilter("all");
+    }}
+    style={{
+      width: "100%",
+      padding: "13px 15px",
+      marginBottom: "8px",
+      border: "none",
+      borderRadius: "8px",
+      textAlign: "left",
+      cursor: "pointer",
+      color: "#fff",
+      background:
+        activeMenu === "reports"
+          ? "#2563eb"
+          : "transparent",
+      fontSize: "15px",
+      fontWeight: "600",
+    }}
+  >
+    📊 Reports
+  </button>
+)}
         {/* MANAGE USERS */}
 
         {canManageUsers && (
@@ -12727,6 +13995,1733 @@ background: darkMode ? "#111827" : "#f8fafc",
   </section>
 )}
 {/* =====================================================
+    ORDER REPORTS
+===================================================== */}
+
+{activeMenu === "reports" && (
+  <section
+    style={{
+      background: darkMode
+        ? "#1e293b"
+        : "#ffffff",
+      borderRadius: "14px",
+      padding: "24px",
+      boxShadow: darkMode
+        ? "0 4px 18px rgba(0,0,0,0.25)"
+        : "0 4px 18px rgba(0,0,0,0.08)",
+      color: darkMode
+        ? "#f8fafc"
+        : "#111827",
+    }}
+  >
+
+    {/* HEADER */}
+
+    <div
+      style={{
+        marginBottom: "24px",
+      }}
+    >
+      <h2
+        style={{
+          margin: 0,
+          fontSize: "24px",
+          fontWeight: "700",
+        }}
+      >
+        📊 Order Reports
+      </h2>
+
+      <p
+        style={{
+          marginTop: "6px",
+          color: darkMode
+            ? "#cbd5e1"
+            : "#6b7280",
+        }}
+      >
+        User-wise order performance report
+      </p>
+    </div>
+
+
+    {/* =================================================
+        REPORT FILTERS
+    ================================================= */}
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(auto-fit, minmax(200px, 1fr))",
+        gap: "16px",
+        marginBottom: "24px",
+      }}
+    >
+
+      {/* FROM DATE */}
+
+      <div>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontWeight: "600",
+          }}
+        >
+          From Date
+        </label>
+
+        <input
+          type="date"
+          value={reportFromDate}
+          onChange={(e) =>
+            setReportFromDate(
+              e.target.value
+            )
+          }
+          style={{
+            width: "100%",
+            padding: "11px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #d1d5db",
+            background: darkMode
+              ? "#0f172a"
+              : "#fff",
+            color: darkMode
+              ? "#fff"
+              : "#111827",
+          }}
+        />
+      </div>
+
+
+      {/* TO DATE */}
+
+      <div>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontWeight: "600",
+          }}
+        >
+          To Date
+        </label>
+
+        <input
+          type="date"
+          value={reportToDate}
+          onChange={(e) =>
+            setReportToDate(
+              e.target.value
+            )
+          }
+          style={{
+            width: "100%",
+            padding: "11px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #d1d5db",
+            background: darkMode
+              ? "#0f172a"
+              : "#fff",
+            color: darkMode
+              ? "#fff"
+              : "#111827",
+          }}
+        />
+      </div>
+
+
+      {/* ROLE */}
+
+      <div>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontWeight: "600",
+          }}
+        >
+          Role
+        </label>
+
+        <select
+          value={reportRoleFilter}
+          onChange={(e) => {
+            setReportRoleFilter(
+              e.target.value
+            );
+
+            setReportUserFilter("all");
+          }}
+          style={{
+            width: "100%",
+            padding: "11px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #d1d5db",
+            background: darkMode
+              ? "#0f172a"
+              : "#fff",
+            color: darkMode
+              ? "#fff"
+              : "#111827",
+          }}
+        >
+          <option value="all">
+            All Roles
+          </option>
+          <option value="owner">
+  Owner
+</option>
+
+          <option value="admin">
+            Admin
+          </option>
+
+          <option value="staff">
+            Staff
+          </option>
+
+          <option value="viewer">
+            Viewer
+          </option>
+        </select>
+      </div>
+
+
+      {/* USER */}
+
+      <div>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontWeight: "600",
+          }}
+        >
+          User
+        </label>
+
+        <select
+          value={reportUserFilter}
+          onChange={(e) =>
+            setReportUserFilter(
+              e.target.value
+            )
+          }
+          style={{
+            width: "100%",
+            padding: "11px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #d1d5db",
+            background: darkMode
+              ? "#0f172a"
+              : "#fff",
+            color: darkMode
+              ? "#fff"
+              : "#111827",
+          }}
+        >
+          <option value="all">
+            All Users
+          </option>
+
+          {users
+            .filter((user) => {
+              if (
+                reportRoleFilter ===
+                "all"
+              ) {
+                return true;
+              }
+
+              return (
+                String(
+                  user.role || ""
+                ).toLowerCase() ===
+                reportRoleFilter.toLowerCase()
+              );
+            })
+            .map((user) => (
+              <option
+                key={user.id}
+                value={user.id}
+              >
+                {user.full_name ||
+                  user.email ||
+                  "Unnamed User"}
+                {" — "}
+                {user.role || ""}
+              </option>
+            ))}
+        </select>
+      </div>
+
+    </div>
+    
+
+
+    {/* =================================================
+    INDIVIDUAL REPORT
+================================================= */}
+
+<div
+  style={{
+    marginTop: "10px",
+    marginBottom: "24px",
+    padding: "16px",
+    borderRadius: "10px",
+    border: darkMode
+      ? "1px solid #475569"
+      : "1px solid #d1d5db",
+    background: darkMode
+      ? "#0f172a"
+      : "#f8fafc",
+  }}
+>
+  <div
+    style={{
+      fontSize: "16px",
+      fontWeight: "700",
+      marginBottom: "6px",
+    }}
+  >
+    👤 Individual Report
+  </div>
+
+  <div
+    style={{
+      fontSize: "13px",
+      color: darkMode
+        ? "#cbd5e1"
+        : "#64748b",
+      marginBottom: "12px",
+    }}
+  >
+    Select a specific user to view their individual order report.
+  </div>
+
+  <select
+  value={individualReportUserId}
+  onChange={(e) => {
+    const selectedId = e.target.value;
+
+    setIndividualReportUserId(selectedId);
+
+    const selectedUser = users.find(
+      (user) =>
+        String(user.id) === String(selectedId)
+    );
+
+    setIndividualReportUserName(
+      selectedUser
+        ? (
+            selectedUser.full_name ||
+            selectedUser.email ||
+            "Selected User"
+          )
+        : ""
+    );
+  }}
+  style={{
+    width: "100%",
+    padding: "11px",
+    borderRadius: "8px",
+    border: darkMode
+      ? "1px solid #475569"
+      : "1px solid #d1d5db",
+    background: darkMode
+      ? "#1e293b"
+      : "#ffffff",
+    color: darkMode
+      ? "#ffffff"
+      : "#111827",
+    fontSize: "14px",
+  }}
+>
+  <option value="">
+    Select User for Individual Report
+  </option>
+
+  {users.map((user) => (
+    <option
+      key={user.id}
+      value={user.id}
+    >
+      {user.full_name ||
+        user.email ||
+        "Unnamed User"}
+      {" — "}
+      {user.role || ""}
+    </option>
+  ))}
+</select>
+{reportFromDate &&
+  reportToDate &&
+  reportFromDate > reportToDate && (
+    <div
+      style={{
+        marginTop: "10px",
+        padding: "10px 12px",
+        borderRadius: "8px",
+        background: darkMode
+          ? "#451a03"
+          : "#fff7ed",
+        border: darkMode
+          ? "1px solid #92400e"
+          : "1px solid #fdba74",
+        color: darkMode
+          ? "#fed7aa"
+          : "#9a3412",
+        fontSize: "13px",
+        fontWeight: "600",
+      }}
+    >
+      ⚠️ From Date cannot be later than To Date.
+    </div>
+  )}
+{individualReportUserId && (
+  <div
+    style={{
+      marginTop: "20px",
+      padding: "18px",
+      borderRadius: "10px",
+      background: darkMode
+        ? "#1e293b"
+        : "#ffffff",
+      border: darkMode
+        ? "1px solid #475569"
+        : "1px solid #e2e8f0",
+    }}
+  >
+    <h3
+      style={{
+        margin: "0 0 16px 0",
+        fontSize: "18px",
+        fontWeight: "700",
+      }}
+    >
+      👤 Individual Report
+      {individualReportData.userName
+        ? ` — ${individualReportData.userName}`
+        : ""}
+    </h3>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: "12px",
+      }}
+    >
+      {/* TOTAL ORDERS */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Total Orders Created
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "22px",
+            fontWeight: "700",
+          }}
+        >
+          {individualReportData.totalOrders}
+        </div>
+      </div>
+
+      {/* TOTAL AMOUNT */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Total Amount
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "22px",
+            fontWeight: "700",
+          }}
+        >
+          ৳
+          {individualReportData.totalAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      {/* PENDING */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Pending
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "18px",
+            fontWeight: "700",
+          }}
+        >
+          {individualReportData.pendingCount}
+        </div>
+
+        <div style={{ marginTop: "3px" }}>
+          ৳
+          {individualReportData.pendingAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      {/* PACKAGING */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Packaging
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "18px",
+            fontWeight: "700",
+          }}
+        >
+          {individualReportData.packagingCount}
+        </div>
+
+        <div style={{ marginTop: "3px" }}>
+          ৳
+          {individualReportData.packagingAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      {/* SHIPPED */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Shipped
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "18px",
+            fontWeight: "700",
+          }}
+        >
+          {individualReportData.shippedCount}
+        </div>
+
+        <div style={{ marginTop: "3px" }}>
+          ৳
+          {individualReportData.shippedAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      {/* CANCELLED */}
+      <div
+        style={{
+          padding: "14px",
+          borderRadius: "8px",
+          background: darkMode
+            ? "#0f172a"
+            : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Cancelled
+        </div>
+
+        <div
+          style={{
+            marginTop: "5px",
+            fontSize: "18px",
+            fontWeight: "700",
+          }}
+        >
+          {individualReportData.cancelledCount}
+        </div>
+
+        <div style={{ marginTop: "3px" }}>
+          ৳
+          {individualReportData.cancelledAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+{/* =================================================
+    INDIVIDUAL REPORT FINAL TOTAL
+================================================= */}
+
+{individualReportUserId && (
+  <div
+    style={{
+      marginTop: "16px",
+      padding: "18px",
+      borderRadius: "10px",
+      background: darkMode
+        ? "#0f172a"
+        : "#f1f5f9",
+      border: darkMode
+        ? "1px solid #475569"
+        : "1px solid #cbd5e1",
+    }}
+  >
+    <div
+      style={{
+        fontSize: "17px",
+        fontWeight: "700",
+        marginBottom: "14px",
+      }}
+    >
+      📌 Final Total Summary
+    </div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: "12px",
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Total Orders
+        </div>
+
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: "700",
+            marginTop: "4px",
+          }}
+        >
+          {individualReportData.totalOrders}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Total Amount
+        </div>
+
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: "700",
+            marginTop: "4px",
+          }}
+        >
+          ৳
+          {individualReportData.totalAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Pending
+        </div>
+
+        <div
+          style={{
+            fontSize: "17px",
+            fontWeight: "600",
+            marginTop: "4px",
+          }}
+        >
+          {individualReportData.pendingCount} Orders
+          {" — "}
+          ৳
+          {individualReportData.pendingAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Packaging
+        </div>
+
+        <div
+          style={{
+            fontSize: "17px",
+            fontWeight: "600",
+            marginTop: "4px",
+          }}
+        >
+          {individualReportData.packagingCount} Orders
+          {" — "}
+          ৳
+          {individualReportData.packagingAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Shipped
+        </div>
+
+        <div
+          style={{
+            fontSize: "17px",
+            fontWeight: "600",
+            marginTop: "4px",
+          }}
+        >
+          {individualReportData.shippedCount} Orders
+          {" — "}
+          ৳
+          {individualReportData.shippedAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode
+              ? "#cbd5e1"
+              : "#64748b",
+          }}
+        >
+          Cancelled
+        </div>
+
+        <div
+          style={{
+            fontSize: "17px",
+            fontWeight: "600",
+            marginTop: "4px",
+          }}
+        >
+          {individualReportData.cancelledCount} Orders
+          {" — "}
+          ৳
+          {individualReportData.cancelledAmount.toLocaleString(
+            "en-BD"
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+{/* =================================================
+    INDIVIDUAL REPORT ORDER LIST
+================================================= */}
+
+{individualReportUserId &&
+  individualReportData.orders.length > 0 && (
+    <div
+      style={{
+        marginTop: "24px",
+      }}
+    >
+      <h3
+        style={{
+          marginBottom: "16px",
+          fontSize: "20px",
+          fontWeight: "700",
+        }}
+      >
+        🧾 Individual Order List
+      </h3>
+
+      <div
+        style={{
+          overflowX: "auto",
+          borderRadius: "10px",
+          border: darkMode
+            ? "1px solid #475569"
+            : "1px solid #e5e7eb",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            minWidth: "850px",
+          }}
+        >
+          <thead>
+            <tr>
+              <th
+                style={{
+                  textAlign: "left",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Order
+              </th>
+
+              <th
+                style={{
+                  textAlign: "left",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Customer
+              </th>
+
+              <th
+                style={{
+                  textAlign: "left",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Phone
+              </th>
+
+              <th
+                style={{
+                  textAlign: "left",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Date
+              </th>
+
+              <th
+                style={{
+                  textAlign: "left",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Status
+              </th>
+
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: "12px",
+                  borderBottom: darkMode
+                    ? "1px solid #475569"
+                    : "1px solid #e5e7eb",
+                }}
+              >
+                Amount
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {individualReportData.orders.map(
+              (order) => (
+                <tr
+                  key={
+                    order.id ||
+                    order.order_number
+                  }
+                >
+                  <td
+                    style={{
+                      padding: "12px",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                      fontWeight: "600",
+                    }}
+                  >
+                    {order.order_number ||
+                      order.id ||
+                      "-"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "12px",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                    }}
+                  >
+                    {order.customer_name ||
+                      "-"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "12px",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                    }}
+                  >
+                    {order.customer_phone ||
+                      "-"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "12px",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                    }}
+                  >
+                    {order.created_at
+                      ? new Date(
+                          order.created_at
+                        ).toLocaleDateString(
+                          "en-BD"
+                        )
+                      : "-"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "12px",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                      textTransform:
+                        "capitalize",
+                    }}
+                  >
+                    {order.status || "-"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "12px",
+                      textAlign: "right",
+                      borderBottom: darkMode
+                        ? "1px solid #334155"
+                        : "1px solid #f1f5f9",
+                      fontWeight: "600",
+                    }}
+                  >
+                    ৳
+                    {Number(
+                      order.total_amount || 0
+                    ).toLocaleString(
+                      "en-BD"
+                    )}
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</div>
+{/* =================================================
+    INDIVIDUAL REPORT PRINT BUTTONS
+================================================= */}
+
+{individualReportUserId && (
+  <div
+    style={{
+      marginTop: "24px",
+      marginBottom: "24px",
+      padding: "16px",
+      borderRadius: "10px",
+      border: darkMode
+        ? "1px solid #475569"
+        : "1px solid #d1d5db",
+      background: darkMode
+        ? "#0f172a"
+        : "#f8fafc",
+    }}
+  >
+    <div
+      style={{
+        fontSize: "16px",
+        fontWeight: "700",
+        marginBottom: "12px",
+      }}
+    >
+      🖨️ Print Individual Report
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "10px",
+      }}
+    >
+      {/* REPORT ONLY */}
+      <button
+        type="button"
+        onClick={() =>
+          printIndividualReport("report")
+        }
+        style={{
+          padding: "10px 16px",
+          border: "none",
+          borderRadius: "8px",
+          background: "#2563eb",
+          color: "#fff",
+          fontWeight: "700",
+          cursor: "pointer",
+        }}
+      >
+        🖨️ Print Report Only
+      </button>
+
+      {/* ORDER LIST ONLY */}
+      <button
+        type="button"
+        onClick={() =>
+          printIndividualReport("orders")
+        }
+        style={{
+          padding: "10px 16px",
+          border: "none",
+          borderRadius: "8px",
+          background: "#16a34a",
+          color: "#fff",
+          fontWeight: "700",
+          cursor: "pointer",
+        }}
+      >
+        🧾 Print Order List
+      </button>
+
+      {/* REPORT + ORDER LIST */}
+      <button
+        type="button"
+        onClick={() =>
+          printIndividualReport("both")
+        }
+        style={{
+          padding: "10px 16px",
+          border: "none",
+          borderRadius: "8px",
+          background: "#7c3aed",
+          color: "#fff",
+          fontWeight: "700",
+          cursor: "pointer",
+        }}
+      >
+        📄 Print Report + Order List
+      </button>
+    </div>
+  </div>
+)}
+        {/* REPORT ACTION BUTTONS */}
+
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "10px",
+        alignItems: "center",
+      }}
+    >
+      {/* GENERATE REPORT */}
+
+      <button
+        onClick={
+          generateOrderReport
+        }
+        disabled={reportLoading}
+        style={{
+          padding:
+            "12px 22px",
+          border: "none",
+          borderRadius: "8px",
+          background:
+            "#2563eb",
+          color: "#fff",
+          fontWeight: "700",
+          cursor:
+            reportLoading
+              ? "not-allowed"
+              : "pointer",
+          opacity:
+            reportLoading
+              ? 0.7
+              : 1,
+        }}
+      >
+        {reportLoading
+          ? "Generating..."
+          : "📊 Generate Report"}
+      </button>
+
+
+      {/* PRINT REPORT */}
+
+      {reportGenerated &&
+        reportSummary && (
+          <button
+            type="button"
+            onClick={
+              printOrderReport
+            }
+            style={{
+              padding:
+                "12px 22px",
+              border: "none",
+              borderRadius: "8px",
+              background:
+                "#16a34a",
+              color: "#fff",
+              fontWeight: "700",
+              cursor:
+                "pointer",
+            }}
+          >
+            🖨️ Print Report
+          </button>
+        )}
+    </div>
+
+
+    {/* =================================================
+        REPORT RESULT
+    ================================================= */}
+
+    {reportGenerated &&
+      reportSummary && (
+        <div
+          style={{
+            marginTop: "30px",
+          }}
+        >
+
+          <h3
+            style={{
+              marginBottom: "18px",
+              fontSize: "20px",
+            }}
+          >
+            Report Summary
+          </h3>
+
+
+          {/* SUMMARY TABLE */}
+
+          <div
+            style={{
+              overflowX:
+                "auto",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse:
+                  "collapse",
+                minWidth:
+                  "650px",
+              }}
+            >
+              <thead>
+                <tr>
+                  <th
+                    style={{
+                      textAlign:
+                        "left",
+                      padding:
+                        "12px",
+                      borderBottom:
+                        darkMode
+                          ? "1px solid #475569"
+                          : "1px solid #e5e7eb",
+                    }}
+                  >
+                    Status
+                  </th>
+
+                  <th
+                    style={{
+                      textAlign:
+                        "right",
+                      padding:
+                        "12px",
+                      borderBottom:
+                        darkMode
+                          ? "1px solid #475569"
+                          : "1px solid #e5e7eb",
+                    }}
+                  >
+                    Order Count
+                  </th>
+
+                  <th
+                    style={{
+                      textAlign:
+                        "right",
+                      padding:
+                        "12px",
+                      borderBottom:
+                        darkMode
+                          ? "1px solid #475569"
+                          : "1px solid #e5e7eb",
+                    }}
+                  >
+                    Total Amount
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+
+                {[
+                  {
+                    label:
+                      "Total Orders Created",
+                    data:
+                      reportSummary.total,
+                  },
+                  {
+                    label:
+                      "Pending",
+                    data:
+                      reportSummary.pending,
+                  },
+                  {
+                    label:
+                      "Packaging",
+                    data:
+                      reportSummary.packaging,
+                  },
+                  {
+                    label:
+                      "Shipped",
+                    data:
+                      reportSummary.shipped,
+                  },
+                  {
+                    label:
+                      "Cancelled",
+                    data:
+                      reportSummary.cancelled,
+                  },
+                ].map(
+                  (item) => (
+                    <tr
+                      key={
+                        item.label
+                      }
+                    >
+                      <td
+                        style={{
+                          padding:
+                            "12px",
+                          borderBottom:
+                            darkMode
+                              ? "1px solid #334155"
+                              : "1px solid #f1f5f9",
+                          fontWeight:
+                            item.label ===
+                            "Total Orders Created"
+                              ? "700"
+                              : "500",
+                        }}
+                      >
+                        {item.label}
+                      </td>
+
+                      <td
+                        style={{
+                          padding:
+                            "12px",
+                          textAlign:
+                            "right",
+                          borderBottom:
+                            darkMode
+                              ? "1px solid #334155"
+                              : "1px solid #f1f5f9",
+                          fontWeight:
+                            "600",
+                        }}
+                      >
+                        {item.data.count}
+                      </td>
+
+                      <td
+                        style={{
+                          padding:
+                            "12px",
+                          textAlign:
+                            "right",
+                          borderBottom:
+                            darkMode
+                              ? "1px solid #334155"
+                              : "1px solid #f1f5f9",
+                          fontWeight:
+                            "600",
+                        }}
+                      >
+                        ৳
+                        {Number(
+                          item.data.amount
+                        ).toLocaleString(
+                          "en-BD"
+                        )}
+                      </td>
+                    </tr>
+                  )
+                )}
+
+              </tbody>
+            </table>
+          </div>
+
+
+          {/* =================================================
+    USER-WISE REPORT
+================================================= */}
+
+{reportOrders.length > 0 && (
+  <div
+    style={{
+      marginTop: "30px",
+    }}
+  >
+    <h3
+      style={{
+        marginBottom: "18px",
+        fontSize: "20px",
+      }}
+    >
+      👥 User-wise Performance
+    </h3>
+
+    <div
+      style={{
+        overflowX: "auto",
+      }}
+    >
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          minWidth: "1050px",
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={{
+              textAlign: "left",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              User
+            </th>
+
+            <th style={{
+              textAlign: "left",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Role
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Orders
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Total Amount
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Cancelled
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Cancel Amount
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Shipped
+            </th>
+
+            <th style={{
+              textAlign: "right",
+              padding: "12px",
+              borderBottom: darkMode
+                ? "1px solid #475569"
+                : "1px solid #e5e7eb",
+            }}>
+              Shipped Amount
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {(() => {
+            const userMap = {};
+
+            reportOrders.forEach((order) => {
+              const userId =
+                order.created_by ||
+                order.created_by_name ||
+                "unknown";
+
+              const userName =
+                order.created_by_name ||
+                "Unknown User";
+
+              const userRole =
+                order.created_by_role ||
+                "Unknown";
+
+              const key = String(userId);
+
+              if (!userMap[key]) {
+                userMap[key] = {
+                  id: userId,
+                  name: userName,
+                  role: userRole,
+
+                  orders: 0,
+                  amount: 0,
+
+                  cancelled: 0,
+                  cancelledAmount: 0,
+
+                  shipped: 0,
+                  shippedAmount: 0,
+                };
+              }
+
+              const amount =
+                Number(order.total_amount || 0);
+
+              userMap[key].orders += 1;
+              userMap[key].amount += amount;
+
+              const status =
+                String(
+                  order.status || ""
+                ).toLowerCase();
+
+              if (status === "cancelled") {
+                userMap[key].cancelled += 1;
+                userMap[key].cancelledAmount += amount;
+              }
+
+              if (status === "shipped") {
+                userMap[key].shipped += 1;
+                userMap[key].shippedAmount += amount;
+              }
+            });
+
+            return Object.values(userMap)
+              .sort((a, b) =>
+                b.orders - a.orders
+              )
+              .map((user) => (
+                <tr key={String(user.id)}>
+                  <td style={{
+                    padding: "12px",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                    fontWeight: "600",
+                  }}>
+                    {user.name}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                    textTransform: "capitalize",
+                  }}>
+                    {user.role}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                  }}>
+                    {user.orders}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                    fontWeight: "600",
+                  }}>
+                    ৳{user.amount.toLocaleString("en-BD")}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                  }}>
+                    {user.cancelled}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                  }}>
+                    ৳{user.cancelledAmount.toLocaleString("en-BD")}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                  }}>
+                    {user.shipped}
+                  </td>
+
+                  <td style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    borderBottom: darkMode
+                      ? "1px solid #334155"
+                      : "1px solid #f1f5f9",
+                  }}>
+                    ৳{user.shippedAmount.toLocaleString("en-BD")}
+                  </td>
+                </tr>
+              ));
+          })()}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
+          {/* NO ORDERS */}
+
+          {reportOrders.length ===
+            0 && (
+            <div
+              style={{
+                marginTop:
+                  "20px",
+                padding:
+                  "18px",
+                borderRadius:
+                  "8px",
+                background:
+                  darkMode
+                    ? "#0f172a"
+                    : "#f8fafc",
+                color:
+                  darkMode
+                    ? "#cbd5e1"
+                    : "#64748b",
+              }}
+            >
+              এই date range এবং filter-এর মধ্যে কোনো order পাওয়া যায়নি।
+            </div>
+          )}
+
+        </div>
+      )}
+
+  </section>
+)}
+{/* =====================================================
     ORDERS MANAGEMENT
 ===================================================== */}
 
@@ -15192,9 +18187,607 @@ if (status === "shipped") {
 
   </section>
 )}
-          {/* =================================================
-              PRODUCTS
-          ================================================= */}
+{/* =====================================================
+    COURIER API SETTINGS
+===================================================== */}
+
+{activeMenu === "courier-api-settings" && (
+  <section
+    style={{
+      background: darkMode ? "#1e293b" : "#ffffff",
+      borderRadius: "14px",
+      padding: "24px",
+      boxShadow: darkMode
+        ? "0 4px 18px rgba(0,0,0,0.25)"
+        : "0 4px 18px rgba(0,0,0,0.08)",
+      color: darkMode ? "#f8fafc" : "#111827",
+    }}
+  >
+    {/* HEADER */}
+    <div style={{ marginBottom: "24px" }}>
+      <h2
+        style={{
+          margin: 0,
+          fontSize: "24px",
+          fontWeight: "700",
+        }}
+      >
+        ⚙️ Courier API Settings
+      </h2>
+
+      <p
+        style={{
+          margin: "6px 0 0",
+          color: darkMode ? "#94a3b8" : "#6b7280",
+          fontSize: "14px",
+        }}
+      >
+        Connect and manage your courier API credentials
+      </p>
+    </div>
+
+    {/* COURIER CARDS */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(auto-fit, minmax(260px, 1fr))",
+        gap: "16px",
+      }}
+    >
+      {/* STEADFAST */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "12px",
+          border: darkMode
+            ? "1px solid #334155"
+            : "1px solid #e2e8f0",
+          background: darkMode ? "#0f172a" : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: "700",
+            marginBottom: "8px",
+          }}
+        >
+          🚚 Steadfast
+        </div>
+
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode ? "#94a3b8" : "#64748b",
+            marginBottom: "16px",
+          }}
+        >
+          Steadfast Courier API
+        </div>
+
+        <div
+          style={{
+            display: "inline-block",
+            padding: "5px 10px",
+            borderRadius: "20px",
+            background: "#fef3c7",
+            color: "#92400e",
+            fontSize: "12px",
+            fontWeight: "700",
+          }}
+        >
+          Not Connected
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+  setSelectedApiCourier("steadfast");
+  setCourierApiModalOpen(true);
+}}
+          style={{
+            width: "100%",
+            marginTop: "16px",
+            padding: "11px 14px",
+            border: "none",
+            borderRadius: "8px",
+            background: "#2563eb",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "700",
+          }}
+        >
+          🔗 Configure API
+        </button>
+      </div>
+
+      {/* PATHAO */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "12px",
+          border: darkMode
+            ? "1px solid #334155"
+            : "1px solid #e2e8f0",
+          background: darkMode ? "#0f172a" : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: "700",
+            marginBottom: "8px",
+          }}
+        >
+          🛵 Pathao
+        </div>
+
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode ? "#94a3b8" : "#64748b",
+            marginBottom: "16px",
+          }}
+        >
+          Pathao Courier API
+        </div>
+
+        <div
+          style={{
+            display: "inline-block",
+            padding: "5px 10px",
+            borderRadius: "20px",
+            background: "#fef3c7",
+            color: "#92400e",
+            fontSize: "12px",
+            fontWeight: "700",
+          }}
+        >
+          Not Connected
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+  setSelectedApiCourier("pathao");
+  setCourierApiModalOpen(true);
+}}
+          style={{
+            width: "100%",
+            marginTop: "16px",
+            padding: "11px 14px",
+            border: "none",
+            borderRadius: "8px",
+            background: "#2563eb",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "700",
+          }}
+        >
+          🔗 Configure API
+        </button>
+      </div>
+
+      {/* REDX */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "12px",
+          border: darkMode
+            ? "1px solid #334155"
+            : "1px solid #e2e8f0",
+          background: darkMode ? "#0f172a" : "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: "700",
+            marginBottom: "8px",
+          }}
+        >
+          🚛 REDX
+        </div>
+
+        <div
+          style={{
+            fontSize: "13px",
+            color: darkMode ? "#94a3b8" : "#64748b",
+            marginBottom: "16px",
+          }}
+        >
+          REDX Courier API
+        </div>
+
+        <div
+          style={{
+            display: "inline-block",
+            padding: "5px 10px",
+            borderRadius: "20px",
+            background: "#fef3c7",
+            color: "#92400e",
+            fontSize: "12px",
+            fontWeight: "700",
+          }}
+        >
+          Not Connected
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+  setSelectedApiCourier("redx");
+  setCourierApiModalOpen(true);
+}}
+          style={{
+            width: "100%",
+            marginTop: "16px",
+            padding: "11px 14px",
+            border: "none",
+            borderRadius: "8px",
+            background: "#2563eb",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "700",
+          }}
+        >
+          🔗 Configure API
+        </button>
+      </div>
+    </div>
+
+    {/* SECURITY NOTE */}
+    <div
+      style={{
+        marginTop: "24px",
+        padding: "16px",
+        borderRadius: "10px",
+        background: darkMode ? "#172554" : "#eff6ff",
+        border: darkMode
+          ? "1px solid #1e40af"
+          : "1px solid #bfdbfe",
+      }}
+    >
+      <div
+        style={{
+          fontWeight: "700",
+          marginBottom: "6px",
+        }}
+      >
+        🔐 API Security
+      </div>
+
+      <div
+        style={{
+          fontSize: "13px",
+          lineHeight: "1.6",
+          color: darkMode ? "#cbd5e1" : "#475569",
+        }}
+      >
+        Courier API credentials will be securely connected
+        through the system. API keys should not be exposed
+        directly in the frontend.
+      </div>
+    </div>
+    </section>
+)}
+
+{/* =====================================================
+    COURIER API CREDENTIAL MODAL
+===================================================== */}
+
+{courierApiModalOpen && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.55)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      padding: "20px",
+    }}
+    onClick={() => setCourierApiModalOpen(false)}
+  >
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "520px",
+        background: darkMode ? "#1e293b" : "#ffffff",
+        borderRadius: "14px",
+        padding: "24px",
+        boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+        color: darkMode ? "#f8fafc" : "#111827",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* HEADER */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "22px",
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "21px",
+              fontWeight: "700",
+            }}
+          >
+            ⚙️{" "}
+            {selectedApiCourier === "steadfast"
+              ? "Steadfast"
+              : selectedApiCourier === "pathao"
+              ? "Pathao"
+              : selectedApiCourier === "redx"
+              ? "REDX"
+              : "Courier"}{" "}
+            API Configuration
+          </h3>
+
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: "13px",
+              color: darkMode ? "#94a3b8" : "#64748b",
+            }}
+          >
+            Enter your courier API credentials
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setCourierApiModalOpen(false)}
+          style={{
+            width: "34px",
+            height: "34px",
+            border: "none",
+            borderRadius: "8px",
+            background: darkMode ? "#334155" : "#f1f5f9",
+            color: darkMode ? "#f8fafc" : "#475569",
+            cursor: "pointer",
+            fontSize: "18px",
+            fontWeight: "700",
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* API KEY */}
+      <div style={{ marginBottom: "16px" }}>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontSize: "13px",
+            fontWeight: "700",
+          }}
+        >
+          API Key
+        </label>
+
+        <input
+          type="password"
+          value={courierApiCredentials.apiKey}
+          onChange={(e) =>
+            setCourierApiCredentials((prev) => ({
+              ...prev,
+              apiKey: e.target.value,
+            }))
+          }
+          placeholder="Enter API Key"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "11px 12px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #cbd5e1",
+            background: darkMode ? "#0f172a" : "#ffffff",
+            color: darkMode ? "#f8fafc" : "#111827",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {/* SECRET KEY */}
+      <div style={{ marginBottom: "16px" }}>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontSize: "13px",
+            fontWeight: "700",
+          }}
+        >
+          Secret Key
+        </label>
+
+        <input
+          type="password"
+          value={courierApiCredentials.secretKey}
+          onChange={(e) =>
+            setCourierApiCredentials((prev) => ({
+              ...prev,
+              secretKey: e.target.value,
+            }))
+          }
+          placeholder="Enter Secret Key"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "11px 12px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #cbd5e1",
+            background: darkMode ? "#0f172a" : "#ffffff",
+            color: darkMode ? "#f8fafc" : "#111827",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {/* CLIENT ID */}
+      <div style={{ marginBottom: "16px" }}>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontSize: "13px",
+            fontWeight: "700",
+          }}
+        >
+          Client ID
+        </label>
+
+        <input
+          type="text"
+          value={courierApiCredentials.clientId}
+          onChange={(e) =>
+            setCourierApiCredentials((prev) => ({
+              ...prev,
+              clientId: e.target.value,
+            }))
+          }
+          placeholder="Enter Client ID"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "11px 12px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #cbd5e1",
+            background: darkMode ? "#0f172a" : "#ffffff",
+            color: darkMode ? "#f8fafc" : "#111827",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {/* CLIENT SECRET */}
+      <div style={{ marginBottom: "20px" }}>
+        <label
+          style={{
+            display: "block",
+            marginBottom: "7px",
+            fontSize: "13px",
+            fontWeight: "700",
+          }}
+        >
+          Client Secret
+        </label>
+
+        <input
+          type="password"
+          value={courierApiCredentials.clientSecret}
+          onChange={(e) =>
+            setCourierApiCredentials((prev) => ({
+              ...prev,
+              clientSecret: e.target.value,
+            }))
+          }
+          placeholder="Enter Client Secret"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "11px 12px",
+            borderRadius: "8px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #cbd5e1",
+            background: darkMode ? "#0f172a" : "#ffffff",
+            color: darkMode ? "#f8fafc" : "#111827",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {/* SECURITY WARNING */}
+      <div
+        style={{
+          padding: "12px",
+          borderRadius: "8px",
+          background: darkMode ? "#172554" : "#eff6ff",
+          border: darkMode
+            ? "1px solid #1e40af"
+            : "1px solid #bfdbfe",
+          marginBottom: "20px",
+          fontSize: "12px",
+          lineHeight: "1.6",
+          color: darkMode ? "#cbd5e1" : "#475569",
+        }}
+      >
+        🔐 Your API credentials will be used only for courier
+        connection and shipment/tracking operations.
+      </div>
+
+      {/* ACTION BUTTONS */}
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          justifyContent: "flex-end",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setCourierApiModalOpen(false)}
+          style={{
+            padding: "11px 18px",
+            border: darkMode
+              ? "1px solid #475569"
+              : "1px solid #cbd5e1",
+            borderRadius: "8px",
+            background: darkMode ? "#334155" : "#ffffff",
+            color: darkMode ? "#f8fafc" : "#374151",
+            cursor: "pointer",
+            fontWeight: "700",
+          }}
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            alert(
+              "API connection system will be connected in the next step."
+            );
+          }}
+          style={{
+            padding: "11px 18px",
+            border: "none",
+            borderRadius: "8px",
+            background: "#2563eb",
+            color: "#ffffff",
+            cursor: "pointer",
+            fontWeight: "700",
+          }}
+        >
+          🔗 Save & Connect
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* =================================================
+    PRODUCTS
+================================================= */}
 
           {activeMenu === "products" && (
             <>
